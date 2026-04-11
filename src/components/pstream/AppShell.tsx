@@ -184,9 +184,9 @@ export default function AppShell() {
     const movie = state.selectedMovie;
     if (!movie) return null;
 
-    // Encode the video URL to handle spaces and special characters
+    // Route video through our proxy to bypass CDN hotlink / referer restrictions
     const rawUrl = movieDetail?.playingUrl || movie.playingurl || '';
-    const videoSrc = rawUrl ? encodeURI(rawUrl) : '';
+    const videoSrc = rawUrl ? `/api/stream/video?url=${encodeURIComponent(rawUrl)}` : '';
     const posterUrl = movieDetail?.thumbnail
       ? (movieDetail.thumbnail.startsWith('http') ? movieDetail.thumbnail : `https://munoapp.org/munowatch-api/laba/yo/naki/${movieDetail.thumbnail}.jpg`)
       : (movie.image.startsWith('http') ? movie.image : `https://munoapp.org/munowatch-api/laba/yo/naki/${movie.image}.jpg`);
@@ -427,12 +427,8 @@ export default function AppShell() {
   // Auth pages don't need navbar/bottom nav
   const isAuthPage = state.currentView === 'login' || state.currentView === 'register';
 
-  // Safety net: redirect to login if user somehow lands on a guarded page without auth
-  useEffect(() => {
-    if (!isAuthenticated && !isAuthPage && state.dashboard !== null) {
-      dispatch({ type: 'NAVIGATE', payload: 'login' });
-    }
-  }, [isAuthenticated, isAuthPage, dispatch, state.dashboard]);
+  // NOTE: Auth redirect is handled by the HYDRATE action in the store.
+  // No additional useEffect redirect needed — keeps SSR/hydration clean.
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white">

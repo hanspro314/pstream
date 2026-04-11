@@ -731,9 +731,22 @@ export default function VideoPlayer({
                 }
               }}
               onError={(e) => {
-                console.error('[PStream] Video error:', e);
+                const video = videoRef.current;
+                const detail = video
+                  ? `code=${video.error?.code} msg=${video.error?.message} networkState=${video.networkState} readyState=${video.readyState}`
+                  : 'no video ref';
+                console.error('[PStream] Video error:', detail);
                 setIsLoading(false);
-                setVideoError('Failed to load video. The source may be unavailable or your browser may not support this format.');
+                let errorMsg = 'Failed to load video.';
+                if (video?.error) {
+                  switch (video.error.code) {
+                    case 1: errorMsg = 'Video loading was aborted.'; break;
+                    case 2: errorMsg = 'Network error — the video source may be unreachable.'; break;
+                    case 3: errorMsg = 'Video decoding failed — the format may not be supported by your browser.'; break;
+                    case 4: errorMsg = 'Video source not supported or the URL is invalid.'; break;
+                  }
+                }
+                setVideoError(errorMsg);
               }}
               onLoadStart={() => {
                 setVideoError(null);
