@@ -174,11 +174,26 @@ export default function AppShell() {
       ? (movieDetail.thumbnail.startsWith('http') ? movieDetail.thumbnail : `https://munoapp.org/munowatch-api/laba/yo/naki/${movieDetail.thumbnail}.jpg`)
       : (movie.image.startsWith('http') ? movie.image : `https://munoapp.org/munowatch-api/laba/yo/naki/${movie.image}.jpg`);
 
+    // Only render player when we have a valid video URL
+    if (!videoSrc) {
+      return (
+        <div className="pt-16 px-4 md:px-12 pb-24 md:pb-8">
+          <div className="aspect-video bg-black rounded-xl flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin w-10 h-10 border-2 border-[#E50914] border-t-transparent rounded-full mx-auto mb-3" />
+              <p className="text-white/60 text-sm">Loading stream...</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="pt-16 px-4 md:px-12 pb-24 md:pb-8">
         <VideoPlayer
+          key={`${movie.id}-${videoSrc}`}
           src={videoSrc}
-          title={movie.title}
+          title={movieDetail?.video_title || movie.title}
           poster={posterUrl}
           onBack={() => {
             setMovieDetail(null);
@@ -370,12 +385,12 @@ export default function AppShell() {
   // Auth pages don't need navbar/bottom nav
   const isAuthPage = state.currentView === 'login' || state.currentView === 'register';
 
-  // Auto-redirect to login when not authenticated
+  // Safety net: redirect to login if user somehow lands on a guarded page without auth
   useEffect(() => {
-    if (!isAuthenticated && !isAuthPage) {
+    if (!isAuthenticated && !isAuthPage && state.dashboard !== null) {
       dispatch({ type: 'NAVIGATE', payload: 'login' });
     }
-  }, [isAuthenticated, isAuthPage, dispatch]);
+  }, [isAuthenticated, isAuthPage, dispatch, state.dashboard]);
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white">

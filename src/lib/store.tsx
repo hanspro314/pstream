@@ -35,6 +35,9 @@ interface AppState {
   previousView: AppView;
   navigationStack: AppView[];
 
+  // Hydration (client-side only)
+  hydrated: boolean;
+
   // Auth
   auth: AuthState;
 
@@ -97,7 +100,15 @@ type AppAction =
   | { type: 'SET_OTP_SENT'; payload: { phone: string; expiry: number } }
   | { type: 'VERIFY_OTP_SUCCESS'; payload: { user: User; token: string } }
   | { type: 'UPDATE_USER'; payload: Partial<User> }
-  | { type: 'CLEAR_AUTH_ERROR' };
+  | { type: 'CLEAR_AUTH_ERROR' }
+  | { type: 'HYDRATE'; payload: {
+      auth: AuthState;
+      profile: UserProfile;
+      watchProgress: WatchProgress[];
+      watchlist: WatchlistItem[];
+      recentSearches: string[];
+      userReviews: StoredReview[];
+    } };
 
 // ─── Initial State ───────────────────────────────────────────────
 const defaultProfile: UserProfile = {
@@ -151,6 +162,7 @@ const initialState: AppState = {
   currentView: 'home',
   previousView: 'home',
   navigationStack: ['home'],
+  hydrated: false,
   auth: defaultAuth,
   dashboard: null,
   searchResults: [],
@@ -422,6 +434,22 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         auth: { ...state.auth, error: null },
       };
+    case 'HYDRATE': {
+      const { auth, profile, watchProgress, watchlist, recentSearches, userReviews } = action.payload;
+      return {
+        ...state,
+        auth,
+        profile,
+        watchProgress,
+        watchlist,
+        recentSearches,
+        userReviews,
+        hydrated: true,
+        // If user was previously authenticated, stay on home; otherwise go to login
+        currentView: auth.isAuthenticated ? 'home' : 'login',
+        navigationStack: [auth.isAuthenticated ? 'home' : 'login'],
+      };
+    }
     default:
       return state;
   }
@@ -439,15 +467,22 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, {
-    ...initialState,
-    auth: loadFromStorage('auth', defaultAuth),
-    profile: loadFromStorage('profile', defaultProfile),
-    watchProgress: loadFromStorage('watchProgress', []),
-    watchlist: loadFromStorage('watchlist', []),
-    recentSearches: loadFromStorage('recentSearches', []),
-    userReviews: loadFromStorage<StoredReview[]>('reviews', []),
-  });
+  // Start with default state to match server HTML — prevents hydration mismatch.
+  // localStorage reads are deferred to useEffect below.
+  const [state, dispatch] = useReducer(appReducer, initialState);
+
+  // Hydrate from localStorage AFTER mount (client-only)
+  useEffect(() => {
+    if (state.hydrated) return;
+    const auth = loadFromStorage<AuthState>('auth', defaultAuth);
+    const profile = loadFromStorage<UserProfile>('profile', defaultProfile);
+    const watchProgress = loadFromStorage<WatchProgress[]>('watchProgress', []);
+    const watchlist = loadFromStorage<WatchlistItem[]>('watchlist', []);
+    const recentSearches = loadFromStorage<string[]>('recentSearches', []);
+    const userReviews = loadFromStorage<StoredReview[]>('reviews', []);
+
+    dispatch({ type: 'HYDRATE', payload: { auth, profile, watchProgress, watchlist, recentSearches, userReviews } });
+  }, [state.hydrated]);
 
   const navigate = useCallback((view: AppView) => {
     dispatch({ type: 'NAVIGATE', payload: view });
@@ -464,41 +499,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Persist to localStorage on changes
   useEffect(() => {
+    if (!state.hydrated) return;
     try {
       localStorage.setItem('pstream_profile', JSON.stringify(state.profile));
     } catch { /* quota exceeded */ }
-  }, [state.profile]);
+  }, [state.profile, state.hydrated]);
 
   useEffect(() => {
+    if (!state.hydrated) return;
     try {
       localStorage.setItem('pstream_watchProgress', JSON.stringify(state.watchProgress));
     } catch { /* quota exceeded */ }
-  }, [state.watchProgress]);
+  }, [state.watchProgress, state.hydrated]);
 
   useEffect(() => {
+    if (!state.hydrated) return;
     try {
       localStorage.setItem('pstream_watchlist', JSON.stringify(state.watchlist));
     } catch { /* quota exceeded */ }
-  }, [state.watchlist]);
+  }, [state.watchlist, state.hydrated]);
 
   useEffect(() => {
+    if (!state.hydrated) return;
     try {
       localStorage.setItem('pstream_recentSearches', JSON.stringify(state.recentSearches));
     } catch { /* quota exceeded */ }
-  }, [state.recentSearches]);
+  }, [state.recentSearches, state.hydrated]);
 
   useEffect(() => {
+    if (!state.hydrated) return;
     try {
       localStorage.setItem('pstream_reviews', JSON.stringify(state.userReviews));
     } catch { /* quota exceeded */ }
-  }, [state.userReviews]);
+  }, [state.userReviews, state.hydrated]);
 
-  // Validate session on mount
-  useEffect(() => {
-    if (state.auth.isAuthenticated && state.auth.user) {
-      // Already loaded from storage
-    }
-  }, []);
+  // Show nothing until client hydration completes — prevents flash of wrong state
+  if (!state.hydrated) {
+    return null;
+  }
 
   return (
     <AppContext.Provider value={{ state, dispatch, navigate, goBack, isInWatchlist }}>
