@@ -370,6 +370,13 @@ export default function AppShell() {
   // Auth pages don't need navbar/bottom nav
   const isAuthPage = state.currentView === 'login' || state.currentView === 'register';
 
+  // Auto-redirect to login when not authenticated
+  useEffect(() => {
+    if (!isAuthenticated && !isAuthPage) {
+      dispatch({ type: 'NAVIGATE', payload: 'login' });
+    }
+  }, [isAuthenticated, isAuthPage, dispatch]);
+
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white">
       {!isAuthPage && <Navbar />}
@@ -388,7 +395,7 @@ export default function AppShell() {
           {state.currentView === 'login' && <LoginPage />}
           {state.currentView === 'register' && <RegisterPage />}
 
-          {/* App pages — require auth */}
+          {/* App pages — require auth (guard all with isAuthenticated) */}
           {isAuthenticated && state.currentView === 'home' && renderHome()}
           {isAuthenticated && state.currentView === 'browse' && <BrowsePage />}
           {isAuthenticated && state.currentView === 'search' && <SearchPage />}
@@ -402,6 +409,13 @@ export default function AppShell() {
           {isAuthenticated && state.currentView === 'downloads' && <DownloadsPage />}
           {isAuthenticated && state.currentView === 'settings' && <SettingsPage />}
           {isAuthenticated && state.currentView === 'admin' && <AdminDashboard />}
+
+          {/* Fallback loading state while redirecting */}
+          {!isAuthenticated && !isAuthPage && (
+            <div className="flex items-center justify-center min-h-screen">
+              <div className="animate-spin w-8 h-8 border-2 border-[#E50914] border-t-transparent rounded-full" />
+            </div>
+          )}
         </motion.main>
       </AnimatePresence>
 
