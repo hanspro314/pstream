@@ -182,9 +182,27 @@ export default function VideoPlayer({
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   // ─── State: Settings ─────────────────────────────────────────
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+
+  // Auto-play when src changes
+  useEffect(() => {
+    if (!src) return;
+    console.log('[PStream] VideoPlayer src set:', src.substring(0, 80));
+    const video = videoRef.current;
+    if (!video) return;
+    // Small delay to ensure the video element has loaded the src
+    const timer = setTimeout(() => {
+      video.play().then(() => {
+        console.log('[PStream] Auto-play started successfully');
+      }).catch((err) => {
+        console.log('[PStream] Auto-play blocked (normal for browsers), user can click play:', err.message);
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [src]);
   const [quality, setQuality] = useState<QualityOption>(() => loadPref<QualityOption>('quality', 'auto'));
   const [speed, setSpeed] = useState<SpeedOption>(() => loadPref<SpeedOption>('speed', '1'));
   const [subtitleLang, setSubtitleLang] = useState<SubtitleLang>(() => loadPref<SubtitleLang>('subtitleLang', 'off'));
@@ -265,9 +283,14 @@ export default function VideoPlayer({
   // ─── Player Controls ────────────────────────────────────────
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      console.warn('[PStream] togglePlay: video ref not available');
+      return;
+    }
     if (video.paused) {
-      video.play().catch(() => {});
+      video.play().catch((err) => {
+        console.error('[PStream] Play failed:', err.message);
+      });
     } else {
       video.pause();
     }
@@ -680,12 +703,6 @@ export default function VideoPlayer({
               onDurationChange={() => {
                 if (videoRef.current) setDuration(videoRef.current.duration);
               }}
-              onLoadedData={() => {
-                setIsLoading(false);
-                if (videoRef.current) {
-                  setVideoResolution(`${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`);
-                }
-              }}
               onWaiting={() => setIsLoading(true)}
               onCanPlay={() => setIsLoading(false)}
               onEnded={() => {
@@ -713,8 +730,13 @@ export default function VideoPlayer({
                   }, 1000);
                 }
               }}
-              onError={() => setIsLoading(false)}
+              onError={(e) => {
+                console.error('[PStream] Video error:', e);
+                setIsLoading(false);
+                setVideoError('Failed to load video. The source may be unavailable or your browser may not support this format.');
+              }}
               onLoadStart={() => {
+                setVideoError(null);
                 setShowNextEpisode(false);
                 setCountdown(10);
                 setSkipButton(null);
@@ -724,6 +746,14 @@ export default function VideoPlayer({
                 setVideoResolution('N/A');
                 skipButtonRef.current = null;
                 if (countdownRef.current) clearInterval(countdownRef.current);
+              }}
+              onLoadedData={() => {
+                console.log('[PStream] Video data loaded, resolution:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+                setIsLoading(false);
+                setVideoError(null);
+                if (videoRef.current) {
+                  setVideoResolution(`${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`);
+                }
               }}
             />
           ) : (
@@ -737,7 +767,7 @@ export default function VideoPlayer({
 
           {/* Loading spinner */}
           <AnimatePresence>
-            {isLoading && (
+            {isLoading && !videoError && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -745,6 +775,36 @@ export default function VideoPlayer({
                 className="absolute inset-0 flex items-center justify-center bg-black/40 z-10"
               >
                 <Loader2 className="w-12 h-12 text-[#E50914] animate-spin" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Video error overlay */}
+          <AnimatePresence>
+            {videoError && !isLoading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 flex items-center justify-center bg-black/80 z-20"
+              >
+                <div className="text-center px-6">
+                  <p className="text-white/80 text-sm mb-4">{videoError}</p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVideoError(null);
+                      // Try to reload the video
+                      if (videoRef.current) {
+                        videoRef.current.load();
+                        videoRef.current.play().catch(() => {});
+                      }
+                    }}
+                    className="bg-[#E50914] hover:bg-[#ff1a25] text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

@@ -94,8 +94,8 @@ export default function MovieCard({ movie, index = 0, showProgress, progress }: 
           </div>
         )}
 
-        {/* Always-visible play icon overlay (small, bottom-right) */}
-        <div className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Always-visible play icon overlay (small, bottom-right) — visible on touch + hover on desktop */}
+        <div className="absolute bottom-2 right-2 z-10 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button
             onClick={handlePlay}
             className="w-8 h-8 rounded-full bg-[#E50914] flex items-center justify-center hover:bg-[#ff1a25] transition-colors shadow-lg"

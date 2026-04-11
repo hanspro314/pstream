@@ -40,6 +40,7 @@ const pageVariants = {
 export default function AppShell() {
   const { state, dispatch } = useAppStore();
   const [movieDetail, setMovieDetail] = useState<MovieDetail | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const isAuthenticated = state.auth.isAuthenticated;
 
   // Fetch dashboard on mount
@@ -59,16 +60,29 @@ export default function AppShell() {
   // Fetch preview when a movie is selected for player
   useEffect(() => {
     if (!state.selectedMovie || state.currentView !== 'player') return;
-    const vid = state.selectedMovie.vid || String(state.selectedMovie.id);
+    const vid = String(state.selectedMovie.vid || state.selectedMovie.id);
 
     const loadPreview = async () => {
+      // Reset inside the async callback (not synchronously in effect body)
+      setMovieDetail(null);
+      setPreviewError(null);
       dispatch({ type: 'SET_PREVIEW_LOADING', payload: true });
       try {
+        console.log('[PStream] Fetching preview for vid:', vid);
         const detail = await fetchPreview(vid);
         const movieDetailData = detail as MovieDetail;
+        console.log('[PStream] Preview loaded, playingUrl:', movieDetailData?.playingUrl?.substring(0, 80));
+        if (!movieDetailData?.playingUrl) {
+          console.warn('[PStream] No playingUrl in preview response for vid:', vid);
+          setPreviewError('This video is not available for streaming yet.');
+          dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
+          return;
+        }
         dispatch({ type: 'SET_MOVIE_DETAIL', payload: movieDetailData });
         setMovieDetail(movieDetailData);
-      } catch {
+      } catch (err) {
+        console.error('[PStream] Preview fetch failed for vid:', vid, err);
+        setPreviewError('Failed to load video. Please try again.');
         dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
         setMovieDetail(null);
       }
@@ -79,7 +93,7 @@ export default function AppShell() {
   // Fetch preview when a movie is selected for detail view
   useEffect(() => {
     if (!state.selectedMovie || state.currentView !== 'detail') return;
-    const vid = state.selectedMovie.vid || String(state.selectedMovie.id);
+    const vid = String(state.selectedMovie.vid || state.selectedMovie.id);
 
     const loadPreview = async () => {
       dispatch({ type: 'SET_PREVIEW_LOADING', payload: true });
@@ -88,7 +102,8 @@ export default function AppShell() {
         const movieDetailData = detail as MovieDetail;
         dispatch({ type: 'SET_MOVIE_DETAIL', payload: movieDetailData });
         setMovieDetail(movieDetailData);
-      } catch {
+      } catch (err) {
+        console.error('[PStream] Detail preview fetch failed for vid:', vid, err);
         dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
         setMovieDetail(null);
       }
@@ -169,10 +184,36 @@ export default function AppShell() {
     const movie = state.selectedMovie;
     if (!movie) return null;
 
-    const videoSrc = movieDetail?.playingUrl || movie.playingurl || '';
+    // Encode the video URL to handle spaces and special characters
+    const rawUrl = movieDetail?.playingUrl || movie.playingurl || '';
+    const videoSrc = rawUrl ? encodeURI(rawUrl) : '';
     const posterUrl = movieDetail?.thumbnail
       ? (movieDetail.thumbnail.startsWith('http') ? movieDetail.thumbnail : `https://munoapp.org/munowatch-api/laba/yo/naki/${movieDetail.thumbnail}.jpg`)
       : (movie.image.startsWith('http') ? movie.image : `https://munoapp.org/munowatch-api/laba/yo/naki/${movie.image}.jpg`);
+
+    // Show error state with retry
+    if (previewError) {
+      return (
+        <div className="pt-16 px-4 md:px-12 pb-24 md:pb-8">
+          <div className="aspect-video bg-black rounded-xl flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-white/70 text-sm mb-3">{previewError}</p>
+              <button
+                onClick={() => {
+                  setPreviewError(null);
+                  setMovieDetail(null);
+                  // Re-trigger the preview fetch by dispatching select movie again
+                  dispatch({ type: 'SELECT_MOVIE', payload: movie });
+                }}
+                className="bg-[#E50914] hover:bg-[#ff1a25] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     // Only render player when we have a valid video URL
     if (!videoSrc) {
@@ -197,6 +238,7 @@ export default function AppShell() {
           poster={posterUrl}
           onBack={() => {
             setMovieDetail(null);
+            setPreviewError(null);
             dispatch({ type: 'GO_BACK' });
           }}
           movieId={movie.id}
