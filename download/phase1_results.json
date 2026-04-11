@@ -1,0 +1,11 @@
+[
+  {
+    "ep": "",
+    "method": "GET",
+    "status": 403,
+    "body": {
+      "403": "Unauthorized Access"
+    },
+    "detail": "PROTECTED"
+  }
+]

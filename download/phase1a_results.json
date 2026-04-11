@@ -1,0 +1,10 @@
+[
+  {
+    "ep": "",
+    "status": 403,
+    "body": {
+      "403": "Unauthorized Access"
+    },
+    "detail": "AUTH PROTECTED: {\"403\": \"Unauthorized Access\"}"
+  }
+]
