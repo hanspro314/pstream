@@ -7,6 +7,22 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'munowatch.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'munoapp.org',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.b-cdn.net',
+      },
+    ],
+  },
 };
 
 export default nextConfig;
