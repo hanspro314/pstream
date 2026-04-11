@@ -22,6 +22,12 @@ import RegisterPage from './RegisterPage';
 import TopTenList from './TopTenList';
 import NewReleasesRow from './NewReleasesRow';
 import BecauseYouWatched from './BecauseYouWatched';
+import NotificationCenter from './NotificationCenter';
+import HelpCenter from './HelpCenter';
+import KidsPage from './KidsPage';
+import DownloadsPage from './DownloadsPage';
+import SettingsPage from './SettingsPage';
+import AdminDashboard from './AdminDashboard';
 import { SkeletonBanner, SkeletonRow } from './SkeletonCard';
 import type { Movie, MovieDetail } from '@/lib/types';
 
@@ -390,6 +396,12 @@ export default function AppShell() {
           {isAuthenticated && state.currentView === 'detail' && renderDetail()}
           {isAuthenticated && state.currentView === 'subscribe' && <SubscribePage />}
           {isAuthenticated && state.currentView === 'profile' && <ProfilePage />}
+          {isAuthenticated && state.currentView === 'notifications' && <NotificationCenter />}
+          {isAuthenticated && state.currentView === 'help' && <HelpCenter />}
+          {isAuthenticated && state.currentView === 'kids' && <KidsPage />}
+          {isAuthenticated && state.currentView === 'downloads' && <DownloadsPage />}
+          {isAuthenticated && state.currentView === 'settings' && <SettingsPage />}
+          {isAuthenticated && state.currentView === 'admin' && <AdminDashboard />}
         </motion.main>
       </AnimatePresence>
 

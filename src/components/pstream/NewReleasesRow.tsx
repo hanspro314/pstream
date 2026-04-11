@@ -23,14 +23,14 @@ export default function NewReleasesRow({ movies }: NewReleasesRowProps) {
     [movies]
   );
 
-  if (sortedMovies.length === 0) return null;
-
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 10);
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
   }, []);
+
+  if (sortedMovies.length === 0) return null;
 
   const scroll = (direction: 'left' | 'right') => {
     const el = scrollRef.current;

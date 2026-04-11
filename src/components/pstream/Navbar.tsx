@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
-import { Search, Bell, ChevronLeft, User, Home, Grid3X3, Crown, Settings, HelpCircle, LogOut, LogIn } from 'lucide-react';
+import { Search, Bell, ChevronLeft, User, Home, Grid3X3, Crown, Settings, HelpCircle, LogOut, LogIn, Download, Baby, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DropdownMenu,
@@ -99,7 +99,11 @@ export default function Navbar() {
               >
                 <Search className="w-5 h-5 text-white" />
               </button>
-              <button className="p-2 rounded-full hover:bg-white/10 transition-colors relative" aria-label="Notifications">
+              <button
+                onClick={() => navigate('notifications')}
+                className="p-2 rounded-full hover:bg-white/10 transition-colors relative"
+                aria-label="Notifications"
+              >
                 <Bell className="w-5 h-5 text-white" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-[#E50914] rounded-full" />
               </button>
@@ -155,6 +159,27 @@ export default function Navbar() {
                 >
                   <HelpCircle className="mr-2 h-4 w-4" />
                   Help
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => { navigate('kids'); setProfileOpen(false); }}
+                  className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
+                >
+                  <Baby className="mr-2 h-4 w-4" />
+                  Kids Mode
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => { navigate('downloads'); setProfileOpen(false); }}
+                  className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Downloads
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => { navigate('admin'); setProfileOpen(false); }}
+                  className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
+                >
+                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                  Admin
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-white/10" />
                 <DropdownMenuItem

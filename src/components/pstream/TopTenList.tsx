@@ -23,16 +23,16 @@ export default function TopTenList({ movies }: TopTenListProps) {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  if (!movies || movies.length === 0) return null;
-
-  const topMovies = movies.slice(0, 10);
-
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 10);
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
   }, []);
+
+  if (!movies || movies.length === 0) return null;
+
+  const topMovies = movies.slice(0, 10);
 
   const scroll = (direction: 'left' | 'right') => {
     const el = scrollRef.current;
