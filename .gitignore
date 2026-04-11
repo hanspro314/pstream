@@ -32,10 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
-
 
 # typescript
 *.tsbuildinfo
@@ -50,5 +50,16 @@ test
 prompt
 
 server.log
+
 # Skills directory
 /skills/
+
+# PStream — probe scripts, results, upload files
+/download/
+/upload/
+/worklog.md
+/db/
+/examples/
+api_probe_results.json
+.zscripts/
+mini-services/
