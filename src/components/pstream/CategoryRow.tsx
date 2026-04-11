@@ -3,8 +3,9 @@
 'use client';
 
 import React, { useRef, useState, useCallback } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronRightIcon } from 'lucide-react';
 import MovieCard from './MovieCard';
+import { useAppStore } from '@/lib/store';
 import type { Movie, WatchProgress } from '@/lib/types';
 
 interface CategoryRowProps {
@@ -12,12 +13,15 @@ interface CategoryRowProps {
   movies: Movie[];
   watchProgress?: WatchProgress[];
   index?: number;
+  showSeeAll?: boolean;
+  categoryFilter?: string;
 }
 
-export default function CategoryRow({ title, movies, watchProgress, index = 0 }: CategoryRowProps) {
+export default function CategoryRow({ title, movies, watchProgress, index = 0, showSeeAll = false, categoryFilter }: CategoryRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const { dispatch, navigate } = useAppStore();
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -37,32 +41,52 @@ export default function CategoryRow({ title, movies, watchProgress, index = 0 }:
     setTimeout(checkScroll, 300);
   };
 
+  const handleSeeAll = () => {
+    if (categoryFilter) {
+      dispatch({ type: 'SET_BROWSE_GENRE_FILTER', payload: categoryFilter });
+      dispatch({ type: 'SET_BROWSE_CATEGORY', payload: categoryFilter });
+    }
+    navigate('browse');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   if (!movies || movies.length === 0) return null;
 
   return (
     <div className="relative group/row mb-6 md:mb-8" style={{ animationDelay: `${index * 100}ms` }}>
-      {/* Title */}
+      {/* Title with optional See All */}
       <div className="flex items-center justify-between px-4 md:px-12 mb-3">
         <h2 className="text-white text-base md:text-lg font-semibold">{title}</h2>
-        <div className="flex gap-1">
-          {canScrollLeft && (
+        <div className="flex items-center gap-2">
+          {showSeeAll && (
             <button
-              onClick={() => scroll('left')}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all opacity-0 group-hover/row:opacity-100"
-              aria-label="Scroll left"
+              onClick={handleSeeAll}
+              className="flex items-center gap-1 text-white/60 hover:text-[#E50914] text-sm font-medium transition-colors"
             >
-              <ChevronLeft className="w-4 h-4" />
+              See All
+              <ChevronRightIcon className="w-4 h-4" />
             </button>
           )}
-          {canScrollRight && (
-            <button
-              onClick={() => scroll('right')}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all opacity-0 group-hover/row:opacity-100"
-              aria-label="Scroll right"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
+          <div className="flex gap-1">
+            {canScrollLeft && (
+              <button
+                onClick={() => scroll('left')}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all opacity-0 group-hover/row:opacity-100"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            {canScrollRight && (
+              <button
+                onClick={() => scroll('right')}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all opacity-0 group-hover/row:opacity-100"
+                aria-label="Scroll right"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -4,21 +4,32 @@
 
 import React from 'react';
 import { useAppStore } from '@/lib/store';
-import { Home, Search, Grid3X3, Crown, User } from 'lucide-react';
-
-const tabs = [
-  { view: 'home' as const, icon: Home, label: 'Home' },
-  { view: 'search' as const, icon: Search, label: 'Search' },
-  { view: 'browse' as const, icon: Grid3X3, label: 'Browse' },
-  { view: 'subscribe' as const, icon: Crown, label: 'Subscribe' },
-  { view: 'profile' as const, icon: User, label: 'Profile' },
-];
+import { Home, Search, Grid3X3, Crown, User, LogIn } from 'lucide-react';
 
 export default function BottomNav() {
   const { state, navigate } = useAppStore();
+  const isAuthenticated = state.auth.isAuthenticated;
 
-  // Hide bottom nav when watching a video
-  if (state.currentView === 'player') return null;
+  // Hide bottom nav when watching a video or on auth pages
+  if (state.currentView === 'player' || state.currentView === 'login' || state.currentView === 'register') {
+    return null;
+  }
+
+  const tabs = isAuthenticated
+    ? [
+        { view: 'home' as const, icon: Home, label: 'Home' },
+        { view: 'search' as const, icon: Search, label: 'Search' },
+        { view: 'browse' as const, icon: Grid3X3, label: 'Browse' },
+        { view: 'subscribe' as const, icon: Crown, label: 'Subscribe' },
+        { view: 'profile' as const, icon: User, label: 'Profile' },
+      ]
+    : [
+        { view: 'home' as const, icon: Home, label: 'Home' },
+        { view: 'search' as const, icon: Search, label: 'Search' },
+        { view: 'browse' as const, icon: Grid3X3, label: 'Browse' },
+        { view: 'subscribe' as const, icon: Crown, label: 'Subscribe' },
+        { view: 'login' as const, icon: LogIn, label: 'Sign In' },
+      ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-[#0A0A0A]/95 backdrop-blur-lg border-t border-white/10">

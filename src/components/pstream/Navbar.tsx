@@ -2,15 +2,27 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
-import { Search, Bell, ChevronLeft, User, Home, Grid3X3, Crown } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Search, Bell, ChevronLeft, User, Home, Grid3X3, Crown, Settings, HelpCircle, LogOut, LogIn } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function Navbar() {
-  const { state, navigate, goBack } = useAppStore();
+  const { state, navigate, goBack, dispatch } = useAppStore();
+  const [profileOpen, setProfileOpen] = useState(false);
   const showBack = state.currentView !== 'home';
+  const isAuthenticated = state.auth.isAuthenticated;
+  const userName = isAuthenticated && state.auth.user ? state.auth.user.name : state.profile.name;
+  const isGuest = !isAuthenticated;
 
   return (
     <motion.header
@@ -78,24 +90,91 @@ export default function Navbar() {
 
         {/* Right section */}
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('search')}
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-            aria-label="Search"
-          >
-            <Search className="w-5 h-5 text-white" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/10 transition-colors relative" aria-label="Notifications">
-            <Bell className="w-5 h-5 text-white" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-[#E50914] rounded-full" />
-          </button>
-          <button
-            onClick={() => navigate('profile')}
-            className="p-2 rounded-full hover:bg-white/10 transition-colors"
-            aria-label="Profile"
-          >
-            <User className="w-5 h-5 text-white" />
-          </button>
+          {isAuthenticated && (
+            <>
+              <button
+                onClick={() => navigate('search')}
+                className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                aria-label="Search"
+              >
+                <Search className="w-5 h-5 text-white" />
+              </button>
+              <button className="p-2 rounded-full hover:bg-white/10 transition-colors relative" aria-label="Notifications">
+                <Bell className="w-5 h-5 text-white" />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-[#E50914] rounded-full" />
+              </button>
+            </>
+          )}
+
+          {/* Profile / Sign In */}
+          {isAuthenticated ? (
+            <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={() => navigate('profile')}
+                  className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                  aria-label="Profile"
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#E50914]/20 border border-[#E50914]/40 flex items-center justify-center">
+                    <span className="text-sm font-semibold text-white">
+                      {userName.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-56 bg-[#1A1A1A] border-white/10 text-white"
+              >
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium text-white">{userName}</p>
+                    <p className="text-xs text-white/50">
+                      {state.auth.user?.phone || state.profile.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuItem
+                  onClick={() => { navigate('profile'); setProfileOpen(false); }}
+                  className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => { navigate('settings'); setProfileOpen(false); }}
+                  className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => { navigate('help'); setProfileOpen(false); }}
+                  className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
+                >
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  Help
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuItem
+                  onClick={() => { dispatch({ type: 'LOGOUT' }); setProfileOpen(false); }}
+                  className="cursor-pointer text-[#E50914] focus:text-[#E50914] focus:bg-[#E50914]/10"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <button
+              onClick={() => navigate('login')}
+              className="flex items-center gap-2 px-4 py-2 bg-[#E50914] hover:bg-[#E50914]/90 text-white text-sm font-medium rounded-lg transition-colors shadow-lg shadow-[#E50914]/20"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden sm:inline">Sign In</span>
+            </button>
+          )}
         </div>
       </div>
     </motion.header>

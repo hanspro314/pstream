@@ -1,7 +1,8 @@
 /* PStream Type Definitions */
 
 // ─── View / Navigation ───────────────────────────────────────────
-export type AppView = 'home' | 'browse' | 'search' | 'player' | 'subscribe' | 'profile';
+export type AppView = 'home' | 'browse' | 'search' | 'player' | 'subscribe' | 'profile'
+  | 'login' | 'register' | 'detail' | 'notifications' | 'help' | 'kids' | 'downloads' | 'settings';
 
 // ─── Movie Types ─────────────────────────────────────────────────
 export interface Movie {
@@ -41,10 +42,14 @@ export interface MovieDetail {
 
 export interface Episode {
   id: number;
-  episode_name: string;
-  playingUrl: string;
+  vid: string;
+  title: string;
   thumbnail: string;
   duration: string;
+  episode: number;
+  season?: number;
+  playingUrl?: string;
+  episode_name?: string;
 }
 
 // ─── Dashboard Types ─────────────────────────────────────────────
@@ -125,6 +130,17 @@ export interface UserSettings {
   autoplay: boolean;
   quality: 'auto' | '360p' | '480p' | '720p' | '1080p';
   notifications: boolean;
+  pushNotifications: boolean;
+  emailNotifications: boolean;
+  newContentAlerts: boolean;
+  wifiOnly: boolean;
+  autoDeleteDownloads: boolean;
+  downloadQuality: 'standard' | 'high';
+  parentalPin: string;
+  maturityRating: 'all' | '7+' | '13+' | '16+' | '18+';
+  language: 'en' | 'lg';
+  streamingQualityMobile: 'low' | 'medium' | 'high' | 'auto';
+  subtitleSize: 'small' | 'medium' | 'large';
 }
 
 // ─── API Types ───────────────────────────────────────────────────
@@ -135,3 +151,142 @@ export interface ApiResponse<T> {
 }
 
 export type SortOption = 'latest' | 'az' | 'popular';
+
+// ─── Auth Types ──────────────────────────────────────────────────
+export interface AuthUser {
+  id: string;
+  phone: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  isAuthenticated: boolean;
+}
+
+export interface OTPVerification {
+  phone: string;
+  otpCode: string;
+  expiresAt: number;
+  verified: boolean;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  avatar: string;
+  isSubscribed: boolean;
+  isVerified: boolean;
+  freeTrialActive: boolean;
+  freeTrialExpiry: number;
+  subscriptionExpiry: number;
+  plan: 'free' | 'weekly' | 'monthly' | 'annual' | 'family';
+  createdAt: number;
+  lastLogin: number;
+}
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  user: User | null;
+  isLoading: boolean;
+  otpSent: boolean;
+  otpVerified: boolean;
+  otpExpiry: number;
+  error: string | null;
+}
+
+// ─── Notification Types ──────────────────────────────────────────
+export interface Notification {
+  id: string;
+  type: 'new_content' | 'subscription' | 'system' | 'promo';
+  title: string;
+  message: string;
+  timestamp: number;
+  read: boolean;
+  icon?: string;
+  actionUrl?: string;
+}
+
+// ─── Review/Rating Types ─────────────────────────────────────────
+export interface UserReview {
+  movieId: number;
+  rating: number; // 1-5
+  reviewText: string;
+  author: string;
+  timestamp: number;
+}
+
+// ─── Download Types ──────────────────────────────────────────────
+export interface DownloadItem {
+  movieId: number;
+  title: string;
+  image: string;
+  vid: string;
+  size: string;
+  downloadedAt: number;
+  progress: number; // 0-100
+  status: 'downloading' | 'completed' | 'expired' | 'paused';
+}
+
+// ─── Kids Profile ────────────────────────────────────────────────
+export interface KidsProfile {
+  name: string;
+  age: number;
+  maxAgeRating: number; // e.g. 7, 13, 16
+  pin: string;
+}
+
+// ─── Promo Code ──────────────────────────────────────────────────
+export interface PromoCode {
+  code: string;
+  discount: number; // percentage
+  duration: 'week' | 'month' | 'year';
+  used: boolean;
+}
+
+// ─── Payment History ─────────────────────────────────────────────
+export interface PaymentRecord {
+  id: string;
+  amount: number;
+  method: 'mtn_momo' | 'airtel_money';
+  status: 'success' | 'pending' | 'failed';
+  date: string;
+  plan: string;
+  reference: string;
+}
+
+// ─── Device Info ─────────────────────────────────────────────────
+export interface DeviceInfo {
+  id: string;
+  name: string;
+  type: 'mobile' | 'desktop' | 'tablet' | 'tv';
+  lastActive: string;
+  current: boolean;
+}
+
+// ─── Plan Types ──────────────────────────────────────────────────
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  duration: 'week' | 'month' | 'year';
+  features: string[];
+  popular?: boolean;
+  screens: number;
+  quality: string;
+}
+
+// ─── Help/FAQ ────────────────────────────────────────────────────
+export interface FAQItem {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+}
+
+// ─── Content Rating ──────────────────────────────────────────────
+export interface ContentRating {
+  label: string;
+  description: string;
+}

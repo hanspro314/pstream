@@ -29,6 +29,14 @@ export default function MovieCard({ movie, index = 0, showProgress, progress }: 
 
   const imageUrl = getImageUrl(movie.image);
 
+  // Clicking the card body navigates to detail page
+  const handleCardClick = () => {
+    dispatch({ type: 'SELECT_MOVIE', payload: movie });
+    navigate('detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Play button goes directly to player
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
     dispatch({ type: 'SELECT_MOVIE', payload: movie });
@@ -64,11 +72,11 @@ export default function MovieCard({ movie, index = 0, showProgress, progress }: 
       className="group relative flex-shrink-0 w-[130px] sm:w-[150px] md:w-[170px] cursor-pointer"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handlePlay}
+      onClick={handleCardClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter') handlePlay(e as unknown as React.MouseEvent); }}
-      aria-label={`Play ${movie.title}`}
+      onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(); }}
+      aria-label={`View details for ${movie.title}`}
     >
       {/* Thumbnail */}
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-[#1A1A1A]">
@@ -86,13 +94,25 @@ export default function MovieCard({ movie, index = 0, showProgress, progress }: 
           </div>
         )}
 
-        {/* Hover overlay */}
+        {/* Always-visible play icon overlay (small, bottom-right) */}
+        <div className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={handlePlay}
+            className="w-8 h-8 rounded-full bg-[#E50914] flex items-center justify-center hover:bg-[#ff1a25] transition-colors shadow-lg"
+            aria-label="Play"
+          >
+            <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
+          </button>
+        </div>
+
+        {/* Hover overlay with actions */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: isHovered ? 1 : 0 }}
           className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 transition-opacity"
         >
           <button
+            onClick={handlePlay}
             className="w-10 h-10 rounded-full bg-[#E50914] flex items-center justify-center hover:bg-[#ff1a25] transition-colors"
             aria-label="Play"
           >
@@ -113,7 +133,7 @@ export default function MovieCard({ movie, index = 0, showProgress, progress }: 
 
         {/* Duration badge */}
         {movie.ldur && (
-          <div className="absolute bottom-2 right-2 bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
+          <div className="absolute bottom-2 left-2 bg-black/80 px-1.5 py-0.5 rounded text-[10px] text-white flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
             {movie.ldur}
           </div>
