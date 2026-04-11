@@ -29,13 +29,14 @@ export interface MovieDetail {
   category_id: number;
   genre: string;
   vjname: string;
-  episodes: Episode[];
+  episodes: number;
   size: string;
   language_id: number;
   lang_name: string;
   series_code: string;
   subscriber: string;
   paid: string;
+  [key: string]: unknown;
 }
 
 export interface Episode {

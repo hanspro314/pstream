@@ -16,10 +16,12 @@ export default function BrowsePage() {
   const { state, dispatch, navigate } = useAppStore();
 
   const allMovies = useMemo<Movie[]>(() => {
-    if (!state.dashboard) return [];
+    if (!state.dashboard?.dashboard) return [];
+    const categories = Array.isArray(state.dashboard.dashboard) ? state.dashboard.dashboard : [];
     const moviesMap = new Map<number, Movie>();
-    state.dashboard.dashboard.forEach((cat) => {
-      cat.movies.forEach((movie) => {
+    categories.forEach((cat) => {
+      const movies = Array.isArray(cat.movies) ? cat.movies : [];
+      movies.forEach((movie) => {
         if (!moviesMap.has(movie.id)) {
           moviesMap.set(movie.id, movie);
         }
@@ -34,11 +36,12 @@ export default function BrowsePage() {
     // Genre filter
     if (state.browseGenreFilter !== 'All') {
       const genre = state.browseGenreFilter.toLowerCase();
-      filtered = filtered.filter((m) =>
-        state.dashboard?.dashboard.some(
-          (cat) => cat.category.toLowerCase() === genre && cat.movies.some((cm) => cm.id === m.id)
-        )
-      );
+      filtered = filtered.filter((m) => {
+        const categories = Array.isArray(state.dashboard?.dashboard) ? state.dashboard.dashboard : [];
+        return categories.some(
+          (cat) => cat.category.toLowerCase() === genre && Array.isArray(cat.movies) && cat.movies.some((cm) => cm.id === m.id)
+        );
+      });
       // If no match from categories, show all (fallback)
       if (filtered.length === 0) filtered = allMovies;
     }

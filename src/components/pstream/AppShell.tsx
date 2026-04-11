@@ -51,10 +51,10 @@ export default function AppShell() {
     const loadPreview = async () => {
       dispatch({ type: 'SET_PREVIEW_LOADING', payload: true });
       try {
-        const res = await fetchPreview(vid);
-        const detail = (res as unknown as { data: MovieDetail }).data || res;
-        dispatch({ type: 'SET_MOVIE_DETAIL', payload: detail as MovieDetail });
-        setMovieDetail(detail as MovieDetail);
+        const detail = await fetchPreview(vid);
+        const movieDetail = detail as MovieDetail;
+        dispatch({ type: 'SET_MOVIE_DETAIL', payload: movieDetail });
+        setMovieDetail(movieDetail);
       } catch {
         dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
         setMovieDetail(null);
@@ -75,16 +75,18 @@ export default function AppShell() {
 
     // Find related movies from dashboard
     const relatedMovies: Movie[] = [];
-    if (state.dashboard) {
-      const movieCategory = state.dashboard.dashboard.find(
-        (cat) => cat.movies.some((m) => m.id === movie.id)
+    if (state.dashboard?.dashboard) {
+      const categories = Array.isArray(state.dashboard.dashboard) ? state.dashboard.dashboard : [];
+      const movieCategory = categories.find(
+        (cat) => Array.isArray(cat.movies) && cat.movies.some((m) => m.id === movie.id)
       );
-      if (movieCategory) {
+      if (movieCategory && Array.isArray(movieCategory.movies)) {
         relatedMovies.push(...movieCategory.movies.filter((m) => m.id !== movie.id));
       }
       // Add some from other categories too
-      for (const cat of state.dashboard.dashboard) {
-        for (const m of cat.movies) {
+      for (const cat of categories) {
+        const movies = Array.isArray(cat.movies) ? cat.movies : [];
+        for (const m of movies) {
           if (m.id !== movie.id && !relatedMovies.some((rm) => rm.id === m.id) && relatedMovies.length < 15) {
             relatedMovies.push(m);
           }
@@ -141,6 +143,7 @@ export default function AppShell() {
     }
 
     const { dashboard, banner } = state.dashboard;
+    const dashboardArray = Array.isArray(dashboard) ? dashboard : [];
     const banners = banner ? [banner] : [];
 
     // Continue watching row
@@ -153,7 +156,7 @@ export default function AppShell() {
 
     return (
       <div className="pb-8">
-        <HeroBanner banners={banners} categories={dashboard} />
+        <HeroBanner banners={banners} categories={dashboardArray} />
 
         {/* Continue Watching */}
         {continueWatching.length > 0 && (
@@ -201,11 +204,11 @@ export default function AppShell() {
         )}
 
         {/* Category rows */}
-        {dashboard.map((cat, i) => (
+        {dashboardArray.map((cat, i) => (
           <div key={cat.category} className="mt-2">
             <CategoryRow
               title={i === 0 ? `🔥 Trending Now` : cat.category}
-              movies={cat.movies}
+              movies={Array.isArray(cat.movies) ? cat.movies : []}
               watchProgress={state.watchProgress}
               index={i}
             />

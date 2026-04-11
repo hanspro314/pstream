@@ -4,6 +4,12 @@ import type { DashboardResponse, MovieDetail, SearchResult } from './types';
 
 const API_BASE = '/api/stream';
 
+interface ApiResponseWrapper<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -17,7 +23,14 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(`API Error: ${res.status} ${res.statusText}`);
   }
 
-  return res.json() as Promise<T>;
+  const json = await res.json();
+
+  // Unwrap the { success, data } wrapper from our API proxy routes
+  if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
+    return (json as ApiResponseWrapper<T>).data;
+  }
+
+  return json as T;
 }
 
 /** Fetch dashboard data (categories, movies, banner) */

@@ -39,8 +39,9 @@ export default function SearchPage() {
       dispatch({ type: 'SET_SEARCH_LOADING', payload: true });
       try {
         const results = await fetchSearch(debouncedQuery.trim());
-        if (!abortRef.current.signal.aborted) {
-          dispatch({ type: 'SET_SEARCH_RESULTS', payload: results });
+        if (!abortRef.current?.signal.aborted) {
+          const resultsArray = Array.isArray(results) ? results : [];
+          dispatch({ type: 'SET_SEARCH_RESULTS', payload: resultsArray });
           dispatch({ type: 'ADD_RECENT_SEARCH', payload: debouncedQuery.trim() });
         }
       } catch {

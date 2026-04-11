@@ -100,29 +100,14 @@ export default function MovieDetailPanel({ detail, relatedMovies }: MovieDetailP
           ))}
         </div>
 
-        {/* Episodes section */}
-        {detail.episodes && detail.episodes.length > 0 && (
-          <div className="mb-8">
-            <h3 className="text-white text-lg font-semibold mb-3">
-              Episodes ({detail.episodes.length})
-            </h3>
-            <div className="grid gap-2 max-h-64 overflow-y-auto">
-              {detail.episodes.map((ep, i) => (
-                <div
-                  key={ep.id || i}
-                  className="flex items-center gap-3 bg-[#1A1A1A] rounded-lg p-3 hover:bg-[#252525] transition-colors cursor-pointer"
-                >
-                  <span className="text-white/50 text-sm font-mono w-8">{i + 1}.</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium line-clamp-1">{ep.episode_name || `Episode ${i + 1}`}</p>
-                    <p className="text-white/50 text-xs">{ep.duration || ''}</p>
-                  </div>
-                  <div className="bg-[#E50914] w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
-                    <Film className="w-3.5 h-3.5 text-white ml-0.5" />
-                  </div>
-                </div>
-              ))}
+        {/* Episodes section — episodes is a count from API */}
+        {typeof detail.episodes === 'number' && detail.episodes > 0 && (
+          <div className="mb-8 bg-[#1A1A1A] rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Film className="w-4 h-4 text-[#E50914]" />
+              <h3 className="text-white text-lg font-semibold">Episodes</h3>
             </div>
+            <p className="text-white/50 text-sm">This title has {detail.episodes} episode{detail.episodes > 1 ? 's' : ''} available.</p>
           </div>
         )}
       </div>
