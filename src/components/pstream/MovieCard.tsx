@@ -3,7 +3,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { Play, Plus, Check, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
@@ -74,13 +73,11 @@ export default function MovieCard({ movie, index = 0, showProgress, progress }: 
       {/* Thumbnail */}
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-[#1A1A1A]">
         {!imgError && imageUrl ? (
-          <Image
+          <img
             src={imageUrl}
             alt={movie.title}
-            fill
-            className="object-cover transition-transform duration-300 group-hover:scale-110"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
             loading="lazy"
-            sizes="(max-width: 640px) 130px, (max-width: 768px) 150px, 170px"
             onError={() => setImgError(true)}
           />
         ) : (

@@ -3,7 +3,6 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
 import { Play, Plus, Check, Info, ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
@@ -124,13 +123,11 @@ export default function HeroBanner({ banners, categories }: HeroBannerProps) {
         >
           {/* Background image */}
           {!imgError && currentItem.image ? (
-            <Image
+            <img
               src={currentItem.image}
               alt={currentItem.title}
-              fill
-              className="object-cover"
-              priority
-              sizes="100vw"
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="eager"
               onError={() => setImgError(true)}
             />
           ) : (
