@@ -246,33 +246,43 @@ export default function VideoPlayer({ src, title, poster, onBack }: VideoPlayerP
       onMouseMove={() => setShowControls(true)}
       onClick={togglePlay}
     >
-      {/* Video element */}
-      <video
-        ref={videoRef}
-        src={src}
-        poster={poster}
-        className="w-full h-full object-contain"
-        playsInline
-        preload="metadata"
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
-        onTimeUpdate={() => {
-          if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
-            const buf = videoRef.current.buffered;
-            if (buf.length > 0) {
-              setBuffered(buf.end(buf.length - 1));
+      {/* Video element — only render when we have a valid src */}
+      {src ? (
+        <video
+          ref={videoRef}
+          src={src}
+          poster={poster || undefined}
+          className="w-full h-full object-contain"
+          playsInline
+          preload="metadata"
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onTimeUpdate={() => {
+            if (videoRef.current) {
+              setCurrentTime(videoRef.current.currentTime);
+              const buf = videoRef.current.buffered;
+              if (buf.length > 0) {
+                setBuffered(buf.end(buf.length - 1));
+              }
             }
-          }
-        }}
-        onDurationChange={() => {
-          if (videoRef.current) setDuration(videoRef.current.duration);
-        }}
-        onLoadedData={() => setIsLoading(false)}
-        onWaiting={() => setIsLoading(true)}
-        onCanPlay={() => setIsLoading(false)}
-        onEnded={() => setIsPlaying(false)}
-      />
+          }}
+          onDurationChange={() => {
+            if (videoRef.current) setDuration(videoRef.current.duration);
+          }}
+          onLoadedData={() => setIsLoading(false)}
+          onWaiting={() => setIsLoading(true)}
+          onCanPlay={() => setIsLoading(false)}
+          onEnded={() => setIsPlaying(false)}
+          onError={() => setIsLoading(false)}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#0A0A0A]">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-[#E50914] animate-spin mx-auto mb-3" />
+            <p className="text-white/60 text-sm">Loading stream...</p>
+          </div>
+        </div>
+      )}
 
       {/* Loading spinner */}
       {isLoading && (
