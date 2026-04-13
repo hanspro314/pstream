@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { findManyAccessCodes, countAccessCodes, getAdminConfig, findAccessCode, createManyAccessCodes } from '@/lib/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { findManyAccessCodes, countAccessCodes, getAdminConfig, findAccessCode, createManyAccessCodes, getDb } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,5 +110,26 @@ export async function POST(request: NextRequest) {
       { success: false, error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+
+    if (status === 'available') {
+      const result = await getDb().execute({ sql: "DELETE FROM AccessCode WHERE status = 'available'" });
+      return NextResponse.json({ success: true, deleted: result.rowsAffected });
+    }
+    if (status === 'all') {
+      const result = await getDb().execute({ sql: 'DELETE FROM AccessCode' });
+      return NextResponse.json({ success: true, deleted: result.rowsAffected });
+    }
+
+    return NextResponse.json({ success: false, error: 'Specify ?status=available or ?status=all' }, { status: 400 });
+  } catch (error) {
+    console.error('Admin tokens DELETE error:', error);
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }
