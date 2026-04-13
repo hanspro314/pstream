@@ -10,7 +10,7 @@ export default function ServiceWorkerRegister() {
       navigator.serviceWorker
         .register('/sw.js')
         .then((registration) => {
-          console.log('[PStream] Service Worker registered:', registration.scope);
+          if (process.env.NODE_ENV !== 'production') console.log('[PStream] Service Worker registered:', registration.scope);
 
           // Check for updates periodically
           registration.addEventListener('updatefound', () => {
@@ -18,14 +18,14 @@ export default function ServiceWorkerRegister() {
             if (newWorker) {
               newWorker.addEventListener('statechange', () => {
                 if (newWorker.state === 'activated') {
-                  console.log('[PStream] New Service Worker activated');
+                  if (process.env.NODE_ENV !== 'production') console.log('[PStream] New Service Worker activated');
                 }
               });
             }
           });
         })
         .catch((error) => {
-          console.warn('[PStream] Service Worker registration failed:', error);
+          if (process.env.NODE_ENV !== 'production') console.warn('[PStream] Service Worker registration failed:', error);
         });
     }
   }, []);

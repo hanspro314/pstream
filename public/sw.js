@@ -16,10 +16,9 @@ self.addEventListener('install', (event) => {
       return cache.addAll(STATIC_ASSETS).catch((err) => {
         // Some assets may fail (e.g. HTML pages served by Next.js)
         // Cache what we can
-        console.warn('[SW] Some static assets failed to cache:', err);
         return Promise.allSettled(
           STATIC_ASSETS.map((url) =>
-            cache.add(url).catch(() => console.warn('[SW] Failed to cache:', url))
+            cache.add(url).catch(() => { /* cache miss ok */ })
           )
         );
       });

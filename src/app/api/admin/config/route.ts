@@ -11,7 +11,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: config });
   } catch (error) {
-    console.error('Admin config GET error:', error);
+    console.error('Admin config GET error:', error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
@@ -43,7 +43,7 @@ export async function PUT(request: NextRequest) {
     const config = await upsertAdminConfig(data);
     return NextResponse.json({ success: true, data: config });
   } catch (error) {
-    console.error('Admin config PUT error:', error);
+    console.error('Admin config PUT error:', error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

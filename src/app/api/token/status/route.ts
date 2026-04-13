@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       data: { valid: true, tier: accessCode.tier, expiresAt: accessCode.expiresAt, daysRemaining, maxDownloads: accessCode.maxDownloads, canDownload },
     });
   } catch (error) {
-    console.error('Token status error:', error);
+    console.error('Token status error:', error.message);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

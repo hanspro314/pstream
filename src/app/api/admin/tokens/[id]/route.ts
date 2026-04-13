@@ -14,7 +14,7 @@ export async function DELETE(
     await deleteAccessCode(id);
     return NextResponse.json({ success: true, message: 'Token deleted' });
   } catch (error) {
-    console.error('Admin token DELETE error:', error);
+    console.error('Admin token DELETE error:', error.message);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -112,7 +112,7 @@ export async function PATCH(
     const updated = await updateAccessCode({ code: id }, updateData);
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
-    console.error('Admin token PATCH error:', error);
+    console.error('Admin token PATCH error:', error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

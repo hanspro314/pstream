@@ -79,7 +79,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error('Admin stats error:', error);
+    console.error('Admin stats error:', error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

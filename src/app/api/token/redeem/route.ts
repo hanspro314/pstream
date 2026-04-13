@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Token redeem error:', error);
+    console.error('Token redeem error:', error.message);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

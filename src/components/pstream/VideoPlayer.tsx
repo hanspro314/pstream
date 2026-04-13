@@ -165,6 +165,8 @@ export default function VideoPlayer({
   const skipAutoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number }>({ time: 0, x: 0 });
+  const playPromiseRef = useRef<Promise<void> | null>(null);
+  const autoplayBlockedRef = useRef(false);
   const statsTapRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
   const isTouchRef = useRef(false);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,15 +194,24 @@ export default function VideoPlayer({
   // Auto-play when src changes
   useEffect(() => {
     if (!src) return;
-    console.log('[PStream] VideoPlayer src set:', src.substring(0, 80));
+    if (process.env.NODE_ENV !== 'production') console.log('[PStream] VideoPlayer src set:', src.substring(0, 80));
     const video = videoRef.current;
     if (!video) return;
+    autoplayBlockedRef.current = false;
     // Small delay to ensure the video element has loaded the src
     const timer = setTimeout(() => {
-      video.play().then(() => {
-        console.log('[PStream] Auto-play started successfully');
+      const p = video.play();
+      playPromiseRef.current = p;
+      p.then(() => {
+        playPromiseRef.current = null;
+        if (process.env.NODE_ENV !== 'production') console.log('[PStream] Auto-play started successfully');
       }).catch((err) => {
-        console.log('[PStream] Auto-play blocked (normal for browsers), user can click play:', err.message);
+        playPromiseRef.current = null;
+        // Track that autoplay was blocked so togglePlay knows not to call pause
+        if (err.name === 'NotAllowedError') {
+          autoplayBlockedRef.current = true;
+        }
+        if (process.env.NODE_ENV !== 'production') console.log('[PStream] Auto-play blocked:', err.message);
       });
     }, 300);
     return () => clearTimeout(timer);
@@ -286,15 +297,27 @@ export default function VideoPlayer({
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) {
-      console.warn('[PStream] togglePlay: video ref not available');
+      if (process.env.NODE_ENV !== 'production') console.warn('[PStream] togglePlay: video ref not available');
       return;
     }
-    if (video.paused) {
-      video.play().catch((err) => {
-        console.error('[PStream] Play failed:', err.message);
-      });
+    // Wait for any pending play promise before toggling to avoid race conditions
+    const pending = playPromiseRef.current;
+    const doToggle = () => {
+      if (video.paused) {
+        const p = video.play();
+        playPromiseRef.current = p;
+        p.catch((err) => {
+          playPromiseRef.current = null;
+          if (process.env.NODE_ENV !== 'production') console.error('[PStream] Play failed:', err.message);
+        });
+      } else {
+        video.pause();
+      }
+    };
+    if (pending) {
+      pending.then(doToggle).catch(doToggle);
     } else {
-      video.pause();
+      doToggle();
     }
   }, []);
 
@@ -774,7 +797,7 @@ export default function VideoPlayer({
                 const detail = video
                   ? `code=${video.error?.code} msg=${video.error?.message} networkState=${video.networkState} readyState=${video.readyState}`
                   : 'no video ref';
-                console.error('[PStream] Video error:', detail);
+                if (process.env.NODE_ENV !== 'production') console.error('[PStream] Video error:', detail);
                 setIsLoading(false);
                 let errorMsg = 'Failed to load video.';
                 if (video?.error) {
@@ -797,10 +820,12 @@ export default function VideoPlayer({
                 setIsLoading(true);
                 setVideoResolution('N/A');
                 skipButtonRef.current = null;
+                playPromiseRef.current = null;
+                autoplayBlockedRef.current = false;
                 if (countdownRef.current) clearInterval(countdownRef.current);
               }}
               onLoadedData={() => {
-                console.log('[PStream] Video data loaded, resolution:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+                if (process.env.NODE_ENV !== 'production') console.log('[PStream] Video data loaded, resolution:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
                 setIsLoading(false);
                 setVideoError(null);
                 if (videoRef.current) {

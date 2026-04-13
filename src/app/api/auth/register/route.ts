@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
         data: {
           message: `OTP sent to ${normalizedPhone}`,
           otpExpiry: expiry,
-          otp: otp, // Only in mock/dev mode
+          ...(process.env.NODE_ENV !== 'production' ? { otp } : {}),
         },
       });
     }
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
         message: 'Account created successfully. Please verify your phone number.',
         userId,
         otpExpiry: expiry,
-        otp, // Only in mock/dev mode
+        ...(process.env.NODE_ENV !== 'production' ? { otp } : {}),
       },
     });
   } catch {

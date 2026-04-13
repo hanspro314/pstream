@@ -107,14 +107,15 @@ export default function RegisterPage() {
     dispatch({ type: 'REGISTER_REQUEST' });
 
     try {
+      const autoPassword = `ps_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`;
       const result: RegisterResponse = await registerUser({
         phone: rawPhone,
         name: 'User',
-        password: 'temp_pass_123',
+        password: autoPassword,
       });
       setOtpHint(result.otp || '');
       setResendTimer(60);
-      setRegData({ userId: result.userId, password: 'temp_pass_123' });
+      setRegData({ userId: result.userId, password: autoPassword });
       setStep('otp-verify');
     } catch (err) {
       dispatch({ type: 'LOGIN_FAIL', payload: err instanceof Error ? err.message : 'Registration failed' });

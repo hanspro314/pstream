@@ -111,12 +111,12 @@ export default function AppShell() {
       setPreviewError(null);
       dispatch({ type: 'SET_PREVIEW_LOADING', payload: true });
       try {
-        console.log('[PStream] Fetching preview for vid:', vid);
+        if (process.env.NODE_ENV !== 'production') console.log('[PStream] Fetching preview for vid:', vid);
         const detail = await fetchPreview(vid);
         const movieDetailData = detail as MovieDetail;
-        console.log('[PStream] Preview loaded, playingUrl:', movieDetailData?.playingUrl?.substring(0, 80));
+        if (process.env.NODE_ENV !== 'production') console.log('[PStream] Preview loaded, playingUrl:', movieDetailData?.playingUrl?.substring(0, 80));
         if (!movieDetailData?.playingUrl) {
-          console.warn('[PStream] No playingUrl in preview response for vid:', vid);
+          if (process.env.NODE_ENV !== 'production') console.warn('[PStream] No playingUrl in preview response for vid:', vid);
           setPreviewError('This video is not available for streaming yet.');
           dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
           return;
@@ -124,7 +124,7 @@ export default function AppShell() {
         dispatch({ type: 'SET_MOVIE_DETAIL', payload: movieDetailData });
         setMovieDetail(movieDetailData);
       } catch (err) {
-        console.error('[PStream] Preview fetch failed for vid:', vid, err);
+        if (process.env.NODE_ENV !== 'production') console.error('[PStream] Preview fetch failed for vid:', vid, err);
         setPreviewError('Failed to load video. Please try again.');
         dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
         setMovieDetail(null);
@@ -146,7 +146,7 @@ export default function AppShell() {
         dispatch({ type: 'SET_MOVIE_DETAIL', payload: movieDetailData });
         setMovieDetail(movieDetailData);
       } catch (err) {
-        console.error('[PStream] Detail preview fetch failed for vid:', vid, err);
+        if (process.env.NODE_ENV !== 'production') console.error('[PStream] Detail preview fetch failed for vid:', vid, err);
         dispatch({ type: 'SET_PREVIEW_LOADING', payload: false });
         setMovieDetail(null);
       }

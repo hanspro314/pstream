@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       data: { tokens, total, page },
     });
   } catch (error) {
-    console.error('Admin tokens GET error:', error);
+    console.error('Admin tokens GET error:', error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       data: { codes: createdCodes, count: created.count },
     });
   } catch (error) {
-    console.error('Admin tokens POST error:', error);
+    console.error('Admin tokens POST error:', error.message);
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

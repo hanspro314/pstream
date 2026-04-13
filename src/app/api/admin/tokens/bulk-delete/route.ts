@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, deleted: before - after, remaining: after });
   } catch (error) {
-    console.error('Bulk delete error:', error);
+    console.error('Bulk delete error:', error.message);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

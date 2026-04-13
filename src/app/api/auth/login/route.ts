@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
         data: {
           message: `OTP sent to ${targetPhone || email}`,
           otpExpiry: expiry,
-          otp, // Mock only
+          ...(process.env.NODE_ENV !== 'production' ? { otp } : {}),
           requiresOtp: true,
         },
       });
