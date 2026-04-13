@@ -646,7 +646,7 @@ export default function VideoPlayer({
           ref={containerRef}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="relative w-full aspect-video bg-black rounded-xl overflow-hidden group"
+          className="relative w-full aspect-video bg-black rounded-xl overflow-visible group"
           onMouseMove={() => {
             setShowControls(true);
             if (isPlaying) resetControlsTimeout();
@@ -659,14 +659,15 @@ export default function VideoPlayer({
           }}
         >
           {/* Video element */}
-          {src ? (
-            <video
-              ref={videoRef}
-              src={src}
-              poster={poster || undefined}
-              className="w-full h-full object-contain"
-              playsInline
-              preload="metadata"
+          <div className="absolute inset-0 overflow-hidden rounded-xl">
+            {src ? (
+              <video
+                ref={videoRef}
+                src={src}
+                poster={poster || undefined}
+                className="w-full h-full object-contain"
+                playsInline
+                preload="metadata"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onTimeUpdate={() => {
@@ -777,6 +778,7 @@ export default function VideoPlayer({
               </div>
             </div>
           )}
+          </div>
 
           {/* Loading spinner */}
           <AnimatePresence>
@@ -1187,7 +1189,7 @@ export default function VideoPlayer({
                   {/* Settings gear */}
                   <div className="relative" ref={settingsMenuRef}>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowSettingsMenu(prev => !prev); }}
+                      onClick={(e) => { e.stopPropagation(); setShowSettingsMenu(prev => !prev); resetControlsTimeout(); }}
                       className={`transition-colors ${showSettingsMenu ? 'text-[#E50914]' : 'text-white hover:text-[#E50914]'}`}
                       aria-label="Settings"
                     >
