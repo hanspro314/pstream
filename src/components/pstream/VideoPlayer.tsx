@@ -166,6 +166,8 @@ export default function VideoPlayer({
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number }>({ time: 0, x: 0 });
   const statsTapRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
+  const isTouchRef = useRef(false);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { state, dispatch } = useAppStore();
   const selectedMovie = state.selectedMovie;
@@ -419,29 +421,50 @@ export default function VideoPlayer({
     if (skipAutoHideRef.current) clearTimeout(skipAutoHideRef.current);
   }, []);
 
-  // ─── Double-Tap Seek (mobile) ──────────────────────────
-  // Detects double-tap on left/right halves of the video to seek ±10s.
-  // Single taps are handled by the container onClick below.
-  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+  // ─── Touch handling (mobile) ──────────────────────────
+  // Uses onTouchEnd to handle single-tap (show/hide controls) and
+  // double-tap (seek ±10s) while preventing synthetic click events.
+  const handleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // Don't handle touches on control elements (they have their own handlers)
+    if ((e.target as HTMLElement).closest('[data-controls]')) return;
+
     const now = Date.now();
-    const touch = e.touches[0];
+    const touch = e.changedTouches[0];
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const x = touch.clientX - rect.left;
     const halfWidth = rect.width / 2;
     const isLeft = x < halfWidth;
 
-    if (now - lastTapRef.current.time < 300) {
-      // Double tap detected — seek
-      e.preventDefault();
+    // Mark this as a touch interaction so the synthetic onClick is ignored
+    isTouchRef.current = true;
+
+    if (now - lastTapRef.current.time < 250) {
+      // Double tap detected — cancel pending single tap and seek
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
       const direction = isLeft ? 'left' : 'right';
       setSeekAnimation(direction);
       seek(direction === 'left' ? -10 : 10);
       setTimeout(() => setSeekAnimation(null), 600);
       lastTapRef.current = { time: 0, x: 0 };
     } else {
+      // Possible single tap — wait 250ms to distinguish from double tap
       lastTapRef.current = { time: now, x };
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+      }
+      singleTapTimerRef.current = setTimeout(() => {
+        singleTapTimerRef.current = null;
+        // Single tap confirmed — toggle controls visibility (YouTube mobile style)
+        setShowControls(prev => !prev);
+      }, 250);
     }
+
+    // Prevent browser from synthesizing a click event from this touch
+    e.preventDefault();
   }, [seek]);
 
   // ─── Stats Toggle (7 taps or 'S' key) ──────────────────────
@@ -621,10 +644,11 @@ export default function VideoPlayer({
   // Ref to track previous skip button for efficient updates
   const skipButtonRef = useRef<'intro' | 'recap' | 'credits' | null>(null);
 
-  // Cleanup countdown on unmount
+  // Cleanup countdown and single-tap timer on unmount
   useEffect(() => {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     };
   }, []);
 
@@ -653,8 +677,13 @@ export default function VideoPlayer({
             setShowControls(true);
             if (isPlaying) resetControlsTimeout();
           }}
-          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
           onClick={(e) => {
+            // Ignore synthetic clicks generated from touch events
+            if (isTouchRef.current) {
+              isTouchRef.current = false;
+              return;
+            }
             // If clicking on any control button, let the button handle it (they all stopPropagation)
             if ((e.target as HTMLElement).closest('[data-controls]')) return;
             // If settings menu is open, clicking outside closes it
@@ -662,10 +691,9 @@ export default function VideoPlayer({
               setShowSettingsMenu(false);
               return;
             }
-            // Netflix/Showmax style: single tap toggles controls visibility
-            // Play/pause is ONLY via the dedicated play/pause buttons
-            setShowControls(prev => !prev);
-            if (isPlaying) resetControlsTimeout();
+            // Desktop: click on video area toggles play/pause (YouTube desktop style)
+            setShowControls(true);
+            togglePlay();
           }}
         >
           {/* Video element */}
@@ -1216,7 +1244,7 @@ export default function VideoPlayer({
                           transition={{ duration: 0.15 }}
                           onClick={(e) => e.stopPropagation()}
                           className="absolute bottom-full right-0 mb-2 w-56 bg-[#1A1A1A] border border-white/10 rounded-lg shadow-2xl z-50 custom-scrollbar"
-                          style={{ maxHeight: '55vh', overflowY: 'auto' }}
+                          style={{ maxHeight: 'min(50vh, 350px)', overflowY: 'auto' }}
                         >
                           {/* Quality Section */}
                           <div className="p-3 border-b border-white/10">
