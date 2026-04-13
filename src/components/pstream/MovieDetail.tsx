@@ -392,9 +392,10 @@ export default function MovieDetailPage({
   };
 
   const handleDownload = () => {
-    const canDl = state.tokenSession?.canDownload || state.auth.isAuthenticated;
-    if (!canDl) {
-      // Show upgrade prompt for stream-only users
+    // Only allow download if token tier is 'download' (admin OTP users are not token-based)
+    const isDownloadTier = state.tokenSession?.tier === 'download';
+    if (!isDownloadTier) {
+      // Show upgrade prompt for stream-only / trial users
       setDownloadBlocked(true);
       return;
     }
@@ -564,13 +565,13 @@ export default function MovieDetailPage({
           <button
             onClick={handleDownload}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              state.tokenSession?.canDownload || state.auth.isAuthenticated
+              state.tokenSession?.tier === 'download'
                 ? 'bg-white/10 text-white hover:bg-white/20'
                 : 'bg-white/5 text-white/40 cursor-not-allowed'
             }`}
           >
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">{state.tokenSession?.canDownload || state.auth.isAuthenticated ? 'Download' : 'Stream Only'}</span>
+            <span className="hidden sm:inline">{state.tokenSession?.tier === 'download' ? 'Download' : 'Stream Only'}</span>
           </button>
         </motion.div>
 

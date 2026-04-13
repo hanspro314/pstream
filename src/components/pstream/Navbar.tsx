@@ -180,7 +180,7 @@ export default function Navbar() {
                   <Baby className="mr-2 h-4 w-4" />
                   Kids Mode
                 </DropdownMenuItem>
-                {(tokenSession?.canDownload || state.auth.isAuthenticated) && (
+                {tokenSession?.tier === 'download' && (
                 <DropdownMenuItem
                   onClick={() => { navigate('downloads'); setProfileOpen(false); }}
                   className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
