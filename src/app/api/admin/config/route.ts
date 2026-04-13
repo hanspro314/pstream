@@ -17,8 +17,10 @@ export async function GET() {
     return NextResponse.json({ success: true, data: config });
   } catch (error) {
     console.error('Admin config GET error:', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : '';
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
+      { success: false, error: 'Internal server error', debug: msg, stack },
       { status: 500 }
     );
   }
