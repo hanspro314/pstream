@@ -17,7 +17,8 @@ export async function PATCH(
       );
     }
 
-    const token = await findAccessCode({ id });
+    // The [id] route param is actually the token CODE (not DB id)
+    const token = await findAccessCode({ code: id });
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'Token not found' },
@@ -90,7 +91,7 @@ export async function PATCH(
       }
     }
 
-    const updated = await updateAccessCode(id, updateData);
+    const updated = await updateAccessCode({ code: id }, updateData);
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     console.error('Admin token PATCH error:', error);

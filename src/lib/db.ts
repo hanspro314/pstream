@@ -205,16 +205,28 @@ export async function createManyAccessCodes(codes: Record<string, unknown>[]) {
   return { count: codes.length };
 }
 
-export async function updateAccessCode(id: string, data: Record<string, unknown>) {
+export async function updateAccessCode(where: { id?: string; code?: string }, data: Record<string, unknown>) {
   const keys = Object.keys(data);
-  if (keys.length === 0) return findAccessCode({ id });
+  if (keys.length === 0) {
+    return findAccessCode(where);
+  }
   const sets = keys.map(k => `"${k}" = ?`).join(', ');
   const vals = keys.map(k => data[k]);
-  await getDb().execute({
-    sql: `UPDATE AccessCode SET ${sets} WHERE id = ?`,
-    args: [...vals, id],
-  });
-  return findAccessCode({ id });
+  if (where.code) {
+    await getDb().execute({
+      sql: `UPDATE AccessCode SET ${sets} WHERE code = ?`,
+      args: [...vals, where.code],
+    });
+    return findAccessCode({ code: where.code });
+  }
+  if (where.id) {
+    await getDb().execute({
+      sql: `UPDATE AccessCode SET ${sets} WHERE id = ?`,
+      args: [...vals, where.id],
+    });
+    return findAccessCode({ id: where.id });
+  }
+  return null;
 }
 
 /* ─── Device ─── */

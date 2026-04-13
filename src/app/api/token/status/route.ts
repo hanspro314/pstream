@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
     if (accessCode.status === 'expired' || (accessCode.expiresAt && new Date(String(accessCode.expiresAt)) < new Date())) {
       if (accessCode.status !== 'expired') {
-        await updateAccessCode(accessCode.id, { status: 'expired' });
+        await updateAccessCode({ code: accessCode.code }, { status: 'expired' });
       }
       return NextResponse.json({ success: true, data: { valid: false, reason: 'expired' } });
     }

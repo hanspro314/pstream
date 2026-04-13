@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       if (device && device.id === accessCode.redeemedByDeviceId) {
         const now = new Date();
         if (accessCode.expiresAt && new Date(String(accessCode.expiresAt)) < now) {
-          await updateAccessCode(accessCode.id, { status: 'expired' });
+          await updateAccessCode({ code: accessCode.code }, { status: 'expired' });
           return NextResponse.json({ success: false, error: 'This code has expired' }, { status: 410 });
         }
         return NextResponse.json({
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
       expiresAt.setDate(expiresAt.getDate() + (Number(accessCode.planDurationDays) || 14));
     }
 
-    const updatedCode = await updateAccessCode(accessCode.id, {
+    const updatedCode = await updateAccessCode({ code: accessCode.code }, {
       status: 'active',
       redeemedAt: new Date().toISOString(),
       expiresAt: expiresAt.toISOString(),

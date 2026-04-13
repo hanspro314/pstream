@@ -477,7 +477,7 @@ function AdminDashboardContent() {
                                 <button
                                   onClick={async () => {
                                     try {
-                                      await fetch('/api/admin/tokens/' + token.id, {
+                                      await fetch('/api/admin/tokens/' + token.code, {
                                         method: 'PATCH',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ action: 'reset_device' }),
@@ -495,7 +495,7 @@ function AdminDashboardContent() {
                                   <ResetDevice className="w-3.5 h-3.5 text-blue-400" />
                                 </button>
                                 <button
-                                  onClick={() => handleTokenAction(token.id, 'revoke', 'Admin revoked')}
+                                  onClick={() => handleTokenAction(token.code, 'revoke', 'Admin revoked')}
                                   className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
                                   title="Revoke"
                                 >
@@ -505,7 +505,7 @@ function AdminDashboardContent() {
                             )}
                             {token.status === 'revoked' && (
                               <button
-                                onClick={() => handleTokenAction(token.id, 'reactivate')}
+                                onClick={() => handleTokenAction(token.code, 'reactivate')}
                                 className="p-1.5 hover:bg-green-500/10 rounded-lg transition-colors"
                                 title="Reactivate"
                               >
@@ -514,7 +514,7 @@ function AdminDashboardContent() {
                             )}
                             {token.status === 'available' && (
                               <button
-                                onClick={() => handleTokenAction(token.id, 'revoke', 'Cancelled by admin')}
+                                onClick={() => handleTokenAction(token.code, 'revoke', 'Cancelled by admin')}
                                 className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
                                 title="Revoke"
                               >
