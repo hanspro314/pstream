@@ -5,7 +5,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/lib/store';
-import { Search, Bell, ChevronLeft, User, Home, Grid3X3, Crown, Settings, HelpCircle, LogOut, LogIn, Download, Baby, LayoutDashboard } from 'lucide-react';
+import { Search, Bell, ChevronLeft, User, Home, Grid3X3, Crown, Settings, HelpCircle, LogOut, LogIn, Download, Baby, LayoutDashboard, Clock, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DropdownMenu,
@@ -20,9 +20,10 @@ export default function Navbar() {
   const { state, navigate, goBack, dispatch } = useAppStore();
   const [profileOpen, setProfileOpen] = useState(false);
   const showBack = state.currentView !== 'home';
-  const isAuthenticated = state.auth.isAuthenticated;
+  const isAuthenticated = state.auth.isAuthenticated || state.tokenSession !== null;
   const userName = isAuthenticated && state.auth.user ? state.auth.user.name : state.profile.name;
   const isGuest = !isAuthenticated;
+  const tokenSession = state.tokenSession;
 
   return (
     <motion.header
@@ -92,6 +93,18 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {isAuthenticated && (
             <>
+              {/* Token Tier Badge */}
+              {tokenSession && (
+                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 rounded-lg border border-white/5">
+                  <Zap className="w-3 h-3 text-[#E50914]" />
+                  <span className="text-xs text-white/60 font-medium">
+                    {tokenSession.tier === 'download' ? 'Stream + DL' : tokenSession.tier === 'trial' ? 'Trial' : 'Stream'}
+                  </span>
+                  <span className="text-white/20">·</span>
+                  <Clock className="w-3 h-3 text-white/30" />
+                  <span className="text-xs text-white/40">{tokenSession.daysRemaining}d</span>
+                </div>
+              )}
               <button
                 onClick={() => navigate('search')}
                 className="p-2 rounded-full hover:bg-white/10 transition-colors"

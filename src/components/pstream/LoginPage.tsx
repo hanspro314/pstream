@@ -1,173 +1,198 @@
-/* PStream Login Page — Phone/Email login with OTP support */
+/* PStream Token Entry Page — Activate access code to stream */
 
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
-import { loginUser, sendOtp, verifyOtp, type LoginResponse, type SendOtpResponse, type VerifyOtpResponse } from '@/lib/api';
+import { redeemToken, checkTokenStatus, fetchAdminConfig } from '@/lib/api';
+import { getStoredFingerprint, getDeviceInfo } from '@/lib/device-fingerprint';
 import { Input } from '@/components/ui/input';
-import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '@/components/ui/input-otp';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import {
-  Phone,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
   Loader2,
-  ArrowLeft,
-  ShieldCheck,
   AlertCircle,
-  LogIn,
   KeyRound,
+  CheckCircle2,
+  MessageCircle,
+  Shield,
+  Sparkles,
+  Play,
+  Download,
+  Clock,
+  Smartphone,
+  Zap,
 } from 'lucide-react';
-
-type LoginStep = 'phone' | 'password' | 'otp-verify';
+import type { AdminConfig } from '@/lib/types';
 
 export default function LoginPage() {
   const { state, dispatch, navigate } = useAppStore();
 
   // Form state
-  const [step, setStep] = useState<LoginStep>('phone');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [loginMode, setLoginMode] = useState<'phone' | 'email'>('phone');
-  const [otpHint, setOtpHint] = useState('');
-  const [resendTimer, setResendTimer] = useState(0);
+  const [code, setCode] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [adminConfig, setAdminConfig] = useState<AdminConfig | null>(null);
+  const [showHowTo, setShowHowTo] = useState(false);
 
-  // Refs
-  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus phone input on mount
+  // Auto-login: check stored token session on mount
   useEffect(() => {
-    if (phoneInputRef.current) {
-      phoneInputRef.current.focus();
+    const autoLogin = async () => {
+      setIsValidating(true);
+      try {
+        const stored = localStorage.getItem('pstream_token_session');
+        if (stored) {
+          const session = JSON.parse(stored);
+          if (session?.code) {
+            const fingerprint = await getStoredFingerprint();
+            const result = await checkTokenStatus(session.code, fingerprint);
+            if (result.valid) {
+              dispatch({
+                type: 'SET_TOKEN_SESSION',
+                payload: {
+                  code: session.code,
+                  tier: result.tier || session.tier,
+                  expiresAt: result.expiresAt || session.expiresAt,
+                  maxDownloads: result.maxDownloads || session.maxDownloads || 0,
+                },
+              });
+              navigate('home');
+              return;
+            } else {
+              // Token expired or revoked — clear it
+              dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
+              setError(result.reason || 'Your access code has expired or been deactivated.');
+            }
+          }
+        }
+      } catch {
+        // Silently fail validation — show entry form
+      }
+      setIsValidating(false);
+    };
+    autoLogin();
+  }, [dispatch, navigate]);
+
+  // Fetch admin config on mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await fetchAdminConfig();
+        setAdminConfig(config);
+        dispatch({ type: 'SET_ADMIN_CONFIG', payload: config });
+      } catch {
+        // Use defaults if config fetch fails
+      }
+    };
+    loadConfig();
+  }, [dispatch]);
+
+  // Focus input after validation
+  useEffect(() => {
+    if (!isValidating && inputRef.current) {
+      inputRef.current.focus();
     }
-  }, []);
+  }, [isValidating]);
 
-  // Resend timer
-  useEffect(() => {
-    if (resendTimer <= 0) return;
-    const timer = setTimeout(() => setResendTimer((t) => t - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [resendTimer]);
-
-  // Format phone number
-  const formatPhone = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length <= 3) return digits;
-    if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
-    return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 10)}`;
+  // Format code input — uppercase, allow dash separator
+  const formatCode = (value: string) => {
+    const cleaned = value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (cleaned.length <= 2) return cleaned;
+    if (cleaned.length <= 8) return `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
+    return cleaned;
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, '');
-    if (raw.length <= 12) {
-      setPhone(formatPhone(raw));
-    }
+  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCode(e.target.value);
+    setCode(formatted);
+    if (error) setError(null);
   };
 
-  // Send OTP
-  const handleSendOtp = useCallback(async () => {
-    const rawPhone = phone.replace(/\D/g, '');
-    if (rawPhone.length < 9) {
-      dispatch({ type: 'LOGIN_FAIL', payload: 'Please enter a valid phone number' });
+  // Activate token
+  const handleActivate = useCallback(async () => {
+    const cleanCode = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (cleanCode.length < 4) {
+      setError('Please enter a valid access code');
       return;
     }
 
-    dispatch({ type: 'LOGIN_REQUEST' });
+    setIsLoading(true);
+    setError(null);
 
     try {
-      const result = await sendOtp({ phone: rawPhone, purpose: 'login' });
-      setOtpHint(result.otp || '');
-      setResendTimer(60);
-      setStep('otp-verify');
-      dispatch({ type: 'SET_OTP_SENT', payload: { phone: rawPhone, expiry: result.otpExpiry } });
-    } catch (err) {
-      dispatch({ type: 'LOGIN_FAIL', payload: err instanceof Error ? err.message : 'Failed to send OTP' });
-    }
-  }, [phone, dispatch]);
+      const fingerprint = await getStoredFingerprint();
+      const deviceInfo = getDeviceInfo();
+      const result = await redeemToken({
+        code: cleanCode,
+        fingerprint,
+        deviceInfo,
+      });
 
-  // Login with password
-  const handlePasswordLogin = useCallback(async () => {
-    if (loginMode === 'email') {
-      if (!email.trim()) {
-        dispatch({ type: 'LOGIN_FAIL', payload: 'Please enter your email' });
-        return;
-      }
-      if (!password) {
-        dispatch({ type: 'LOGIN_FAIL', payload: 'Please enter your password' });
-        return;
-      }
+      // Store session
+      dispatch({
+        type: 'SET_TOKEN_SESSION',
+        payload: {
+          code: result.code,
+          tier: result.tier,
+          expiresAt: result.expiresAt,
+          maxDownloads: result.maxDownloads,
+        },
+      });
 
-      dispatch({ type: 'LOGIN_REQUEST' });
-      try {
-        const result: LoginResponse = await loginUser({ email: email.trim(), password });
-        dispatch({ type: 'LOGIN_SUCCESS', payload: result });
+      // Dispatch mock login success
+      const planName = result.tier === 'download' ? 'Stream + Download' : result.tier === 'trial' ? 'Trial' : 'Stream';
+      dispatch({
+        type: 'LOGIN_SUCCESS',
+        payload: {
+          user: {
+            id: 'token-user',
+            name: 'PStream User',
+            phone: '',
+            email: 'user@pstream.ug',
+            avatar: '',
+            isSubscribed: true,
+            isVerified: true,
+            freeTrialActive: result.tier === 'trial',
+            freeTrialExpiry: Date.now() + 7 * 86400000,
+            subscriptionExpiry: new Date(result.expiresAt).getTime(),
+            plan: result.tier === 'trial' ? 'weekly' : result.tier,
+            createdAt: Date.now(),
+            lastLogin: Date.now(),
+          },
+          token: 'token-session',
+        },
+      });
+
+      setSuccess(true);
+
+      // Navigate to home after a short delay
+      setTimeout(() => {
         navigate('home');
-      } catch (err) {
-        dispatch({ type: 'LOGIN_FAIL', payload: err instanceof Error ? err.message : 'Login failed' });
-      }
-    } else {
-      const rawPhone = phone.replace(/\D/g, '');
-      if (rawPhone.length < 9) {
-        dispatch({ type: 'LOGIN_FAIL', payload: 'Please enter a valid phone number' });
-        return;
-      }
-      if (!password) {
-        dispatch({ type: 'LOGIN_FAIL', payload: 'Please enter your password' });
-        return;
-      }
-
-      dispatch({ type: 'LOGIN_REQUEST' });
-      try {
-        const result: LoginResponse = await loginUser({ phone: rawPhone, password });
-        dispatch({ type: 'LOGIN_SUCCESS', payload: result });
-        navigate('home');
-      } catch (err) {
-        dispatch({ type: 'LOGIN_FAIL', payload: err instanceof Error ? err.message : 'Login failed' });
-      }
-    }
-  }, [phone, email, password, loginMode, dispatch, navigate]);
-
-  // Verify OTP
-  const handleVerifyOtp = useCallback(async () => {
-    if (otpCode.length !== 6) {
-      dispatch({ type: 'LOGIN_FAIL', payload: 'Please enter the complete 6-digit code' });
-      return;
-    }
-
-    const rawPhone = phone.replace(/\D/g, '');
-    dispatch({ type: 'LOGIN_REQUEST' });
-
-    try {
-      const result: VerifyOtpResponse = await verifyOtp({ phone: rawPhone, otp: otpCode });
-      dispatch({ type: 'VERIFY_OTP_SUCCESS', payload: result });
-      navigate('home');
+      }, 800);
     } catch (err) {
-      dispatch({ type: 'LOGIN_FAIL', payload: err instanceof Error ? err.message : 'OTP verification failed' });
+      const message = err instanceof Error ? err.message : 'Activation failed';
+      setError(message);
+    } finally {
+      setIsLoading(false);
     }
-  }, [phone, otpCode, dispatch, navigate]);
+  }, [code, dispatch, navigate]);
 
-  // Resend OTP
-  const handleResendOtp = useCallback(async () => {
-    if (resendTimer > 0) return;
-    setOtpCode('');
-    await handleSendOtp();
-  }, [resendTimer, handleSendOtp]);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isLoading) {
+      handleActivate();
+    }
+  };
 
-  // Go to register
-  const goToRegister = () => navigate('register');
-
-  const isLoading = state.auth.isLoading;
-  const error = state.auth.error;
+  const whatsappNumber = adminConfig?.whatsapp || '256 700 000 000';
+  const currency = adminConfig?.currency || 'UGX';
+  const streamPrice = adminConfig?.streamPrice || 2000;
+  const downloadPrice = adminConfig?.downloadPrice || 3500;
+  const trialEnabled = adminConfig?.trialEnabled ?? true;
+  const trialHours = adminConfig?.trialDurationHours || 24;
 
   // ─── Animations ──────────────────────────────────────────────
   const containerVariants = {
@@ -184,14 +209,33 @@ export default function LoginPage() {
     },
   };
 
-  const inputVariants = {
-    hidden: { opacity: 0, x: -20 },
+  const fadeIn = {
+    hidden: { opacity: 0, y: 20 },
     visible: (i: number) => ({
       opacity: 1,
-      x: 0,
-      transition: { delay: 0.1 + i * 0.08, duration: 0.3 },
+      y: 0,
+      transition: { delay: i * 0.1, duration: 0.4 },
     }),
   };
+
+  // ─── Validating / Loading Screen ─────────────────────────────
+  if (isValidating) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <div className="relative w-16 h-16 mx-auto mb-4">
+            <div className="absolute inset-0 border-2 border-[#E50914]/30 rounded-full" />
+            <div className="absolute inset-0 border-2 border-transparent border-t-[#E50914] rounded-full animate-spin" />
+          </div>
+          <p className="text-white/50 text-sm">Checking your session...</p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4 py-8">
@@ -203,39 +247,36 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="text-center mb-8"
         >
-          <button
-            onClick={() => navigate('home')}
-            className="inline-flex items-center gap-2 mb-6 group"
-          >
-            <div className="bg-[#E50914] rounded-lg w-10 h-10 flex items-center justify-center shadow-lg shadow-[#E50914]/30 group-hover:shadow-[#E50914]/50 transition-shadow">
-              <span className="text-white font-bold text-lg">P</span>
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="bg-[#E50914] rounded-xl w-12 h-12 flex items-center justify-center shadow-lg shadow-[#E50914]/30">
+              <Play className="text-white w-6 h-6 ml-0.5" />
             </div>
-            <span className="text-white font-bold text-2xl tracking-tight">PStream</span>
-          </button>
+            <span className="text-white font-bold text-3xl tracking-tight">PStream</span>
+          </div>
           <h1 className="text-2xl md:text-3xl font-bold text-white">
-            {step === 'otp-verify' ? 'Verify Your Phone' : 'Welcome Back'}
+            {success ? 'Welcome to PStream!' : 'Activate Your Access'}
           </h1>
           <p className="text-white/50 mt-2 text-sm">
-            {step === 'otp-verify'
-              ? 'Enter the 6-digit code sent to your phone'
-              : 'Sign in to continue watching'}
+            {success
+              ? 'Your access code has been activated'
+              : 'Enter your access code to start watching'}
           </p>
         </motion.div>
 
         {/* Error message */}
         <AnimatePresence>
-          {error && (
+          {error && !success && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="mb-4 p-3 bg-[#E50914]/10 border border-[#E50914]/30 rounded-lg flex items-start gap-2"
+              className="mb-4 p-3 bg-[#E50914]/10 border border-[#E50914]/30 rounded-xl flex items-start gap-2"
             >
               <AlertCircle className="w-4 h-4 text-[#E50914] mt-0.5 shrink-0" />
-              <p className="text-sm text-[#E50914]/90">{error}</p>
+              <p className="text-sm text-[#E50914]/90 flex-1">{error}</p>
               <button
-                onClick={() => dispatch({ type: 'CLEAR_AUTH_ERROR' })}
-                className="ml-auto text-[#E50914]/60 hover:text-[#E50914] text-xs"
+                onClick={() => setError(null)}
+                className="text-[#E50914]/60 hover:text-[#E50914] text-xs shrink-0"
               >
                 Dismiss
               </button>
@@ -243,419 +284,225 @@ export default function LoginPage() {
           )}
         </AnimatePresence>
 
-        {/* OTP Hint (dev mode) */}
-        {otpHint && step === 'otp-verify' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg"
-          >
-            <p className="text-xs text-yellow-500/90">
-              <span className="font-semibold">Demo OTP:</span> {otpHint}
-            </p>
-          </motion.div>
-        )}
-
-        <AnimatePresence mode="wait">
-          {/* ─── STEP 1: Phone / Email Input ──────────────────── */}
-          {step === 'phone' && (
+        {/* Success message */}
+        <AnimatePresence>
+          {success && (
             <motion.div
-              key="phone-step"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="bg-[#141414] rounded-2xl p-6 md:p-8 shadow-2xl border border-white/5"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-4 p-4 bg-green-500/10 border border-green-500/30 rounded-xl flex items-center gap-3"
             >
-              {/* Login mode toggle */}
-              <div className="flex gap-2 mb-6">
-                <button
-                  onClick={() => setLoginMode('phone')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    loginMode === 'phone'
-                      ? 'bg-[#E50914] text-white shadow-lg shadow-[#E50914]/20'
-                      : 'bg-white/5 text-white/60 hover:bg-white/10'
-                  }`}
-                >
-                  <Phone className="w-4 h-4" />
-                  Phone
-                </button>
-                <button
-                  onClick={() => setLoginMode('email')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    loginMode === 'email'
-                      ? 'bg-[#E50914] text-white shadow-lg shadow-[#E50914]/20'
-                      : 'bg-white/5 text-white/60 hover:bg-white/10'
-                  }`}
-                >
-                  <Mail className="w-4 h-4" />
-                  Email
-                </button>
-              </div>
-
-              {loginMode === 'phone' ? (
-                <motion.div
-                  key="phone-input"
-                  custom={0}
-                  variants={inputVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="space-y-4"
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="text-white/80 text-sm">
-                      Phone Number
-                    </Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
-                      <Input
-                        id="phone"
-                        ref={phoneInputRef}
-                        type="tel"
-                        placeholder="256 700 000 000"
-                        value={phone}
-                        onChange={handlePhoneChange}
-                        className="pl-10 h-12 bg-white/5 border-white/10 text-white placeholder:text-white/30 rounded-lg focus:border-[#E50914] focus:ring-[#E50914]/20"
-                      />
-                    </div>
-                    <p className="text-xs text-white/30">Uganda format: 256XXXXXXXXX</p>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="email-input"
-                  custom={0}
-                  variants={inputVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="space-y-4"
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="text-white/80 text-sm">
-                      Email Address
-                    </Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10 h-12 bg-white/5 border-white/10 text-white placeholder:text-white/30 rounded-lg focus:border-[#E50914] focus:ring-[#E50914]/20"
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* OTP Login Button */}
-              {loginMode === 'phone' && (
-                <motion.div
-                  custom={1}
-                  variants={inputVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="mt-4"
-                >
-                  <Button
-                    onClick={handleSendOtp}
-                    disabled={isLoading || phone.replace(/\D/g, '').length < 9}
-                    className="w-full h-12 bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-lg gap-2"
-                    variant="outline"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <KeyRound className="w-4 h-4" />
-                    )}
-                    Login with OTP
-                  </Button>
-                </motion.div>
-              )}
-
-              {/* Divider */}
-              {loginMode === 'phone' && (
-                <motion.div
-                  custom={2}
-                  variants={inputVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="flex items-center gap-3 my-5"
-                >
-                  <div className="flex-1 h-px bg-white/10" />
-                  <span className="text-xs text-white/30">or continue with password</span>
-                  <div className="flex-1 h-px bg-white/10" />
-                </motion.div>
-              )}
-
-              {/* Password field */}
-              {loginMode === 'phone' ? (
-                <motion.div
-                  custom={3}
-                  variants={inputVariants}
-                  initial="hidden"
-                  animate="visible"
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="password" className="text-white/80 text-sm">
-                      Password
-                    </Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
-                      <Input
-                        id="password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter your password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handlePasswordLogin()}
-                        className="pl-10 pr-10 h-12 bg-white/5 border-white/10 text-white placeholder:text-white/30 rounded-lg focus:border-[#E50914] focus:ring-[#E50914]/20"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  custom={1}
-                  variants={inputVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="mt-4 space-y-4"
-                >
-                  <div className="space-y-2">
-                    <Label htmlFor="email-password" className="text-white/80 text-sm">
-                      Password
-                    </Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
-                      <Input
-                        id="email-password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter your password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handlePasswordLogin()}
-                        className="pl-10 pr-10 h-12 bg-white/5 border-white/10 text-white placeholder:text-white/30 rounded-lg focus:border-[#E50914] focus:ring-[#E50914]/20"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Remember me & Forgot password */}
-              <motion.div
-                custom={4}
-                variants={inputVariants}
-                initial="hidden"
-                animate="visible"
-                className="flex items-center justify-between mt-4"
-              >
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="remember"
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked === true)}
-                    className="border-white/20 data-[state=checked]:bg-[#E50914] data-[state=checked]:border-[#E50914]"
-                  />
-                  <Label htmlFor="remember" className="text-xs text-white/50 cursor-pointer">
-                    Remember me
-                  </Label>
-                </div>
-                <button className="text-xs text-[#E50914] hover:text-[#E50914]/80 transition-colors">
-                  Forgot password?
-                </button>
-              </motion.div>
-
-              {/* Login button */}
-              <motion.div
-                custom={5}
-                variants={inputVariants}
-                initial="hidden"
-                animate="visible"
-                className="mt-6"
-              >
-                <Button
-                  onClick={handlePasswordLogin}
-                  disabled={isLoading}
-                  className="w-full h-12 bg-[#E50914] hover:bg-[#E50914]/90 text-white rounded-lg gap-2 font-semibold shadow-lg shadow-[#E50914]/20 hover:shadow-[#E50914]/40 transition-all"
-                  size="lg"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <LogIn className="w-5 h-5" />
-                  )}
-                  Sign In
-                </Button>
-              </motion.div>
-
-              {/* Sign up link */}
-              <motion.div
-                custom={6}
-                variants={inputVariants}
-                initial="hidden"
-                animate="visible"
-                className="mt-6 text-center"
-              >
-                <p className="text-sm text-white/50">
-                  Don&apos;t have an account?{' '}
-                  <button
-                    onClick={goToRegister}
-                    className="text-[#E50914] hover:text-[#E50914]/80 font-medium transition-colors"
-                  >
-                    Sign Up Free
-                  </button>
-                </p>
-              </motion.div>
-            </motion.div>
-          )}
-
-          {/* ─── STEP 2: OTP Verification ─────────────────────── */}
-          {step === 'otp-verify' && (
-            <motion.div
-              key="otp-step"
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="bg-[#141414] rounded-2xl p-6 md:p-8 shadow-2xl border border-white/5"
-            >
-              {/* Back button */}
-              <button
-                onClick={() => {
-                  setStep('phone');
-                  setOtpCode('');
-                  dispatch({ type: 'CLEAR_AUTH_ERROR' });
-                }}
-                className="flex items-center gap-1 text-white/50 hover:text-white text-sm mb-6 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back
-              </button>
-
-              {/* Shield icon */}
-              <div className="flex justify-center mb-6">
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 200, delay: 0.2 }}
-                  className="w-16 h-16 rounded-full bg-[#E50914]/10 flex items-center justify-center"
-                >
-                  <ShieldCheck className="w-8 h-8 text-[#E50914]" />
-                </motion.div>
-              </div>
-
-              <div className="text-center mb-6">
-                <p className="text-white/60 text-sm">
-                  We sent a 6-digit code to
-                </p>
-                <p className="text-white font-semibold mt-1">
-                  {phone || 'your phone number'}
-                </p>
-              </div>
-
-              {/* OTP Input */}
-              <div className="flex justify-center mb-6">
-                <InputOTP
-                  maxLength={6}
-                  value={otpCode}
-                  onChange={setOtpCode}
-                  onComplete={handleVerifyOtp}
-                  containerClassName="gap-1"
-                >
-                  <InputOTPGroup>
-                    <InputOTPSlot
-                      index={0}
-                      className="w-11 h-13 md:w-13 md:h-14 bg-white/5 border-white/15 rounded-lg text-white text-xl data-[active=true]:border-[#E50914] data-[active=true]:ring-[#E50914]/20"
-                    />
-                    <InputOTPSlot
-                      index={1}
-                      className="w-11 h-13 md:w-13 md:h-14 bg-white/5 border-white/15 rounded-lg text-white text-xl data-[active=true]:border-[#E50914] data-[active=true]:ring-[#E50914]/20"
-                    />
-                    <InputOTPSlot
-                      index={2}
-                      className="w-11 h-13 md:w-13 md:h-14 bg-white/5 border-white/15 rounded-lg text-white text-xl data-[active=true]:border-[#E50914] data-[active=true]:ring-[#E50914]/20"
-                    />
-                  </InputOTPGroup>
-                  <InputOTPSeparator className="text-white/20 mx-1" />
-                  <InputOTPGroup>
-                    <InputOTPSlot
-                      index={3}
-                      className="w-11 h-13 md:w-13 md:h-14 bg-white/5 border-white/15 rounded-lg text-white text-xl data-[active=true]:border-[#E50914] data-[active=true]:ring-[#E50914]/20"
-                    />
-                    <InputOTPSlot
-                      index={4}
-                      className="w-11 h-13 md:w-13 md:h-14 bg-white/5 border-white/15 rounded-lg text-white text-xl data-[active=true]:border-[#E50914] data-[active=true]:ring-[#E50914]/20"
-                    />
-                    <InputOTPSlot
-                      index={5}
-                      className="w-11 h-13 md:w-13 md:h-14 bg-white/5 border-white/15 rounded-lg text-white text-xl data-[active=true]:border-[#E50914] data-[active=true]:ring-[#E50914]/20"
-                    />
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-
-              {/* Verify button */}
-              <Button
-                onClick={handleVerifyOtp}
-                disabled={isLoading || otpCode.length !== 6}
-                className="w-full h-12 bg-[#E50914] hover:bg-[#E50914]/90 text-white rounded-lg gap-2 font-semibold shadow-lg shadow-[#E50914]/20"
-                size="lg"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <ShieldCheck className="w-5 h-5" />
-                )}
-                Verify Code
-              </Button>
-
-              {/* Resend */}
-              <div className="mt-4 text-center">
-                <p className="text-sm text-white/40">
-                  Didn&apos;t receive the code?{' '}
-                  {resendTimer > 0 ? (
-                    <span className="text-white/60">
-                      Resend in {resendTimer}s
-                    </span>
-                  ) : (
-                    <button
-                      onClick={handleResendOtp}
-                      disabled={isLoading}
-                      className="text-[#E50914] hover:text-[#E50914]/80 font-medium transition-colors disabled:opacity-50"
-                    >
-                      Resend Code
-                    </button>
-                  )}
-                </p>
+              <CheckCircle2 className="w-6 h-6 text-green-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-400">Access Activated!</p>
+                <p className="text-xs text-green-400/60 mt-0.5">Redirecting you to the home page...</p>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
+        <AnimatePresence mode="wait">
+          {!success && (
+            <motion.div
+              key="token-form"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="bg-[#141414] rounded-2xl p-6 md:p-8 shadow-2xl border border-white/5"
+            >
+              {/* Code Input */}
+              <motion.div custom={0} variants={fadeIn} initial="hidden" animate="visible" className="space-y-3">
+                <label htmlFor="access-code" className="text-white/80 text-sm font-medium block">
+                  Access Code
+                </label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-[#E50914]" />
+                  <Input
+                    id="access-code"
+                    ref={inputRef}
+                    type="text"
+                    placeholder="e.g. PS-A3K7X9"
+                    value={code}
+                    onChange={handleCodeChange}
+                    onKeyDown={handleKeyDown}
+                    disabled={isLoading}
+                    maxLength={10}
+                    className="pl-12 h-14 bg-white/5 border-white/10 text-white placeholder:text-white/25 rounded-xl text-lg font-mono tracking-widest text-center focus:border-[#E50914] focus:ring-[#E50914]/20 transition-all disabled:opacity-50"
+                  />
+                </div>
+                <p className="text-xs text-white/30 text-center">
+                  Enter the code you received via WhatsApp
+                </p>
+              </motion.div>
+
+              {/* Activate Button */}
+              <motion.div custom={1} variants={fadeIn} initial="hidden" animate="visible" className="mt-6">
+                <Button
+                  onClick={handleActivate}
+                  disabled={isLoading || code.replace(/[^A-Za-z0-9]/g, '').length < 4}
+                  className="w-full h-14 bg-[#E50914] hover:bg-[#E50914]/90 text-white rounded-xl gap-2 font-semibold text-base shadow-lg shadow-[#E50914]/20 hover:shadow-[#E50914]/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  size="lg"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Activating...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-5 h-5" />
+                      Activate Access
+                    </>
+                  )}
+                </Button>
+              </motion.div>
+
+              {/* Pricing Info */}
+              {adminConfig && (
+                <motion.div custom={2} variants={fadeIn} initial="hidden" animate="visible" className="mt-6">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-white/5 rounded-xl p-3 text-center border border-white/5">
+                      <div className="flex justify-center mb-1.5">
+                        <div className="w-8 h-8 rounded-lg bg-[#E50914]/10 flex items-center justify-center">
+                          <Play className="w-4 h-4 text-[#E50914]" />
+                        </div>
+                      </div>
+                      <p className="text-white font-bold text-sm">{currency} {streamPrice.toLocaleString()}</p>
+                      <p className="text-white/40 text-[10px] mt-0.5">Stream Only</p>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-3 text-center border border-[#E50914]/20">
+                      <div className="flex justify-center mb-1.5">
+                        <div className="w-8 h-8 rounded-lg bg-[#E50914]/15 flex items-center justify-center">
+                          <Download className="w-4 h-4 text-[#E50914]" />
+                        </div>
+                      </div>
+                      <p className="text-white font-bold text-sm">{currency} {downloadPrice.toLocaleString()}</p>
+                      <p className="text-white/40 text-[10px] mt-0.5">Stream + Download</p>
+                    </div>
+                    {trialEnabled && (
+                      <div className="bg-white/5 rounded-xl p-3 text-center border border-white/5">
+                        <div className="flex justify-center mb-1.5">
+                          <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                            <Clock className="w-4 h-4 text-yellow-400" />
+                          </div>
+                        </div>
+                        <p className="text-white font-bold text-sm">FREE</p>
+                        <p className="text-white/40 text-[10px] mt-0.5">{trialHours}h Trial</p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* How to Get Access toggle */}
+              <motion.div custom={3} variants={fadeIn} initial="hidden" animate="visible" className="mt-5">
+                <button
+                  onClick={() => setShowHowTo(!showHowTo)}
+                  className="w-full flex items-center justify-center gap-2 text-sm text-white/50 hover:text-white/70 transition-colors py-2"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>How to get an access code</span>
+                  <motion.span
+                    animate={{ rotate: showHowTo ? 180 : 0 }}
+                    className="text-xs"
+                  >
+                    ▼
+                  </motion.span>
+                </button>
+
+                <AnimatePresence>
+                  {showHowTo && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 space-y-3 bg-white/5 rounded-xl p-4 border border-white/5">
+                        <div className="flex items-start gap-3">
+                          <div className="w-7 h-7 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <MessageCircle className="w-3.5 h-3.5 text-green-400" />
+                          </div>
+                          <div>
+                            <p className="text-white/80 text-sm font-medium">1. WhatsApp Us</p>
+                            <p className="text-white/40 text-xs mt-0.5">
+                              Send a message to <span className="text-green-400 font-medium">{whatsappNumber}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-7 h-7 rounded-full bg-blue-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <Smartphone className="w-3.5 h-3.5 text-blue-400" />
+                          </div>
+                          <div>
+                            <p className="text-white/80 text-sm font-medium">2. Pay via MoMo</p>
+                            <p className="text-white/40 text-xs mt-0.5">
+                              Pay using MTN MoMo or Airtel Money
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <div className="w-7 h-7 rounded-full bg-[#E50914]/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <KeyRound className="w-3.5 h-3.5 text-[#E50914]" />
+                          </div>
+                          <div>
+                            <p className="text-white/80 text-sm font-medium">3. Receive Your Code</p>
+                            <p className="text-white/40 text-xs mt-0.5">
+                              We&apos;ll send your unique access code instantly
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+
+              {/* WhatsApp CTA */}
+              <motion.div custom={4} variants={fadeIn} initial="hidden" animate="visible" className="mt-5">
+                <a
+                  href={`https://wa.me/${whatsappNumber.replace(/\s/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 h-12 bg-green-600 hover:bg-green-600/90 text-white rounded-xl font-medium text-sm transition-colors shadow-lg shadow-green-600/20"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  Get Code via WhatsApp
+                </a>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Features / Trust badges */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="mt-8 grid grid-cols-3 gap-3"
+        >
+          {[
+            { icon: Shield, label: 'Device Locked', desc: 'Secure access' },
+            { icon: Sparkles, label: 'HD Quality', desc: 'Best streaming' },
+            { icon: Smartphone, label: 'Mobile First', desc: 'Watch anywhere' },
+          ].map(({ icon: Icon, label, desc }) => (
+            <div key={label} className="text-center">
+              <Icon className="w-5 h-5 text-white/20 mx-auto mb-1" />
+              <p className="text-white/40 text-[10px] font-medium">{label}</p>
+              <p className="text-white/20 text-[9px]">{desc}</p>
+            </div>
+          ))}
+        </motion.div>
+
         {/* Footer */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="text-center text-xs text-white/20 mt-8"
+          transition={{ delay: 0.8 }}
+          className="text-center text-xs text-white/15 mt-8"
         >
-          By signing in, you agree to PStream&apos;s Terms of Service and Privacy Policy
+          By activating, you agree to PStream&apos;s Terms of Service
         </motion.p>
       </div>
     </div>

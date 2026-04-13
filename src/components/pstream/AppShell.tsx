@@ -5,7 +5,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
-import { fetchDashboard, fetchPreview, fetchWithCache } from '@/lib/api';
+import { fetchDashboard, fetchPreview, fetchWithCache, checkTokenStatus, fetchAdminConfig } from '@/lib/api';
+import { getStoredFingerprint } from '@/lib/device-fingerprint';
 import Navbar from './Navbar';
 import BottomNav from './BottomNav';
 import HeroBanner from './HeroBanner';
@@ -38,10 +39,52 @@ const pageVariants = {
 };
 
 export default function AppShell() {
-  const { state, dispatch } = useAppStore();
+  const { state, dispatch, navigate } = useAppStore();
   const [movieDetail, setMovieDetail] = useState<MovieDetail | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const isAuthenticated = state.auth.isAuthenticated;
+  // Use token session for auth — derive isAuthenticated from it
+  const isAuthenticated = state.auth.isAuthenticated || state.tokenSession !== null;
+
+  // Validate token session on load and fetch admin config
+  useEffect(() => {
+    const validateAndLoad = async () => {
+      // Validate token session if it exists
+      if (state.tokenSession?.code && !state.auth.isAuthenticated) {
+        try {
+          const fingerprint = await getStoredFingerprint();
+          const result = await checkTokenStatus(state.tokenSession.code, fingerprint);
+          if (result.valid) {
+            dispatch({
+              type: 'SET_TOKEN_SESSION',
+              payload: {
+                code: state.tokenSession.code,
+                tier: result.tier || state.tokenSession.tier || 'stream',
+                expiresAt: result.expiresAt || state.tokenSession.expiresAt || '',
+                maxDownloads: result.maxDownloads || state.tokenSession.maxDownloads || 0,
+              },
+            });
+          } else {
+            // Token no longer valid
+            dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
+            dispatch({ type: 'LOGOUT' });
+          }
+        } catch {
+          // Silently fail — let user continue
+        }
+      }
+
+      // Fetch admin config
+      if (!state.adminConfig) {
+        try {
+          const config = await fetchAdminConfig();
+          dispatch({ type: 'SET_ADMIN_CONFIG', payload: config });
+        } catch {
+          // Use defaults
+        }
+      }
+    };
+    validateAndLoad();
+  }, []);
 
   // Fetch dashboard on mount
   useEffect(() => {
@@ -427,8 +470,15 @@ export default function AppShell() {
   // Auth pages don't need navbar/bottom nav
   const isAuthPage = state.currentView === 'login' || state.currentView === 'register';
 
-  // NOTE: Auth redirect is handled by the HYDRATE action in the store.
-  // No additional useEffect redirect needed — keeps SSR/hydration clean.
+  // Auth guard: redirect to login if no token session and not on auth page
+  useEffect(() => {
+    if (!isAuthenticated && !isAuthPage && state.hydrated) {
+      navigate('login');
+    }
+  }, [isAuthenticated, isAuthPage, state.hydrated]);
+
+  // NOTE: Auth redirect is also handled by the HYDRATE action in the store.
+  // This useEffect provides additional runtime guarding.
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white">

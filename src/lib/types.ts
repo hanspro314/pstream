@@ -290,3 +290,79 @@ export interface ContentRating {
   label: string;
   description: string;
 }
+
+// ─── Token System Types ──────────────────────────────────────────
+export interface AdminConfig {
+  id: string;
+  siteName: string;
+  whatsapp: string;
+  currency: string;
+  streamPrice: number;
+  downloadPrice: number;
+  planDurationDays: number;
+  trialEnabled: boolean;
+  trialDurationHours: number;
+  maxDownloadsPerPeriod: number;
+  tokenPrefix: string;
+  tokenLength: number;
+  defaultRefundPolicy: 'none' | 'partial' | 'full';
+  defaultRefundPercent: number;
+  allowDeviceTransfer: boolean;
+  maxDevicesPerToken: number;
+  updatedAt: string;
+}
+
+export interface TokenInfo {
+  id: string;
+  code: string;
+  tier: 'stream' | 'download' | 'trial';
+  status: 'available' | 'active' | 'expired' | 'revoked';
+  planDurationDays: number;
+  maxDownloads: number;
+  pricePaid: number;
+  redeemedAt: string | null;
+  expiresAt: string | null;
+  redeemedByDeviceId: string | null;
+  redeemedDeviceInfo: string | null;
+  revokedAt: string | null;
+  revokeReason: string | null;
+  refunded: boolean;
+  refundAmount: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface TokenRedeemResult {
+  tier: string;
+  expiresAt: string;
+  code: string;
+  planDurationDays: number;
+  maxDownloads: number;
+}
+
+export interface TokenStatusResult {
+  valid: boolean;
+  reason?: string;
+  tier?: string;
+  expiresAt?: string;
+  daysRemaining?: number;
+  maxDownloads?: number;
+  canDownload?: boolean;
+}
+
+export interface AdminStats {
+  totalTokens: number;
+  activeTokens: number;
+  availableTokens: number;
+  revokedTokens: number;
+  expiredTokens: number;
+  totalRevenue: number;
+  revenueThisWeek: number;
+  revenueToday: number;
+  totalDevices: number;
+  streamCount: number;
+  downloadCount: number;
+  trialCount: number;
+  recentActivations: { code: string; tier: string; deviceInfo: string; activatedAt: string }[];
+  dailyRevenue: { date: string; amount: number }[];
+}

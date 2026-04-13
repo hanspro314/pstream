@@ -1,100 +1,567 @@
-/* PStream Admin Dashboard — Content management, analytics, user management */
+/* PStream Admin Dashboard — Real data from API */
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import {
-  LayoutDashboard, Users, Film, DollarSign, TrendingUp, Eye,
-  Plus, Edit3, Trash2, Search, ChevronDown, BarChart3,
-  PieChart, Activity, ArrowUpRight, ArrowDownRight, Clock,
-  Monitor, Smartphone, Globe, Star, Heart, Play, Crown,
-  Filter, Download, MoreVertical, Check, X, AlertTriangle,
-  Settings, RefreshCw, Image
+  LayoutDashboard, Ticket, DollarSign, Settings, RefreshCw,
+  Copy, Check, X, Loader2, AlertCircle, Ban,
+  RotateCcw, Play, Download, Clock, TrendingUp,
+  Plus, Shield, Smartphone, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import {
+  fetchAdminStats, fetchAdminTokens, generateTokens,
+  manageToken, fetchAdminConfig, updateAdminConfig,
+} from '@/lib/api';
+import type { AdminStats, TokenInfo, AdminConfig } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 
-// ─── Mock Analytics Data ──────────────────────────────────────────
-const analyticsData = {
-  totalUsers: 12458,
-  activeUsers: 8934,
-  totalRevenue: 48750000,
-  monthlyRevenue: 6125000,
-  totalStreams: 156789,
-  avgWatchTime: '42 min',
-  newUsersThisMonth: 1243,
-  conversionRate: '34.2%',
-  churnRate: '8.5%',
-  topGenres: [
-    { name: 'Drama', count: 34200, percentage: 28 },
-    { name: 'Action', count: 28100, percentage: 23 },
-    { name: 'Comedy', count: 19500, percentage: 16 },
-    { name: 'Romance', count: 15300, percentage: 12 },
-    { name: 'Horror', count: 9800, percentage: 8 },
-    { name: 'Sci Fi', count: 7200, percentage: 6 },
-    { name: 'Documentary', count: 5600, percentage: 5 },
-  ],
-  revenueByPlan: [
-    { plan: 'Weekly', amount: 28500000, users: 7125, color: '#E50914' },
-    { plan: 'Monthly', amount: 15600000, users: 2600, color: '#831010' },
-    { plan: 'Annual', amount: 4800000, users: 800, color: '#B3B3B3' },
-  ],
-  userGrowth: [
-    { month: 'Oct', users: 8200 },
-    { month: 'Nov', users: 9400 },
-    { month: 'Dec', users: 10100 },
-    { month: 'Jan', users: 10800 },
-    { month: 'Feb', users: 11500 },
-    { month: 'Mar', users: 12458 },
-  ],
-  topContent: [
-    { title: 'Kampala Nights S2', views: 28400, rating: 4.8, revenue: 1568000 },
-    { title: 'The Pearl', views: 23100, rating: 4.6, revenue: 1275000 },
-    { title: 'East Africa Stories', views: 19800, rating: 4.5, revenue: 1089000 },
-    { title: 'Mountain Warriors', views: 16500, rating: 4.3, revenue: 907500 },
-    { title: 'Love in Jinja', views: 14200, rating: 4.7, revenue: 781000 },
-  ],
-  recentActivity: [
-    { type: 'user', message: 'New user registered: +256 782***456', time: '2 min ago' },
-    { type: 'payment', message: 'Payment received: UGX 2,000 from +256 700***123', time: '5 min ago' },
-    { type: 'content', message: 'New movie uploaded: "The Return" (Action)', time: '15 min ago' },
-    { type: 'user', message: 'User upgraded to Premium: +256 773***789', time: '23 min ago' },
-    { type: 'payment', message: 'Payment received: UGX 6,000 from +256 705***321', time: '31 min ago' },
-    { type: 'alert', message: 'Server load reached 85%', time: '45 min ago' },
-  ],
-};
-
-// ─── Mock Users ───────────────────────────────────────────────────
-const mockUsers = [
-  { id: '1', name: 'Agnes Nakamya', phone: '+256 700***123', plan: 'Weekly', status: 'active', joined: '2024-01-15', streams: 142 },
-  { id: '2', name: 'Samuel Kato', phone: '+256 782***456', plan: 'Monthly', status: 'active', joined: '2024-01-20', streams: 89 },
-  { id: '3', name: 'Patience Mutebi', phone: '+256 773***789', plan: 'Annual', status: 'active', joined: '2024-02-01', streams: 234 },
-  { id: '4', name: 'David Okello', phone: '+256 705***321', plan: 'Free', status: 'active', joined: '2024-02-15', streams: 12 },
-  { id: '5', name: 'Grace Achieng', phone: '+256 771***654', plan: 'Weekly', status: 'expired', joined: '2024-01-10', streams: 67 },
-];
-
-type AdminTab = 'overview' | 'users' | 'content' | 'analytics' | 'revenue';
+type AdminTab = 'overview' | 'tokens' | 'generate' | 'settings' | 'revenue';
 
 const ADMIN_TABS: { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'users', label: 'Users', icon: Users },
-  { id: 'content', label: 'Content', icon: Film },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'tokens', label: 'Tokens', icon: Ticket },
+  { id: 'generate', label: 'Generate', icon: Plus },
+  { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'revenue', label: 'Revenue', icon: DollarSign },
 ];
 
+function formatUGX(amount: number): string {
+  return new Intl.NumberFormat('en-UG', { style: 'decimal', maximumFractionDigits: 0 }).format(amount);
+}
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return '—';
+  return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function AdminDashboard() {
+  const { state } = useAppStore();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
-  const [userSearch, setUserSearch] = useState('');
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [tokens, setTokens] = useState<TokenInfo[]>([]);
+  const [tokensTotal, setTokensTotal] = useState(0);
+  const [tokensPage, setTokensPage] = useState(1);
+  const [tokenStatusFilter, setTokenStatusFilter] = useState<string>('');
+  const [config, setConfig] = useState<AdminConfig | null>(state.adminConfig);
 
-  const filteredUsers = useMemo(() => {
-    if (!userSearch.trim()) return mockUsers;
-    const q = userSearch.toLowerCase();
-    return mockUsers.filter(u => u.name.toLowerCase().includes(q) || u.phone.includes(q));
-  }, [userSearch]);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const formatUGX = (amount: number) => {
-    return new Intl.NumberFormat('en-UG', { style: 'decimal', maximumFractionDigits: 0 }).format(amount);
+  // Toast auto-clear
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  // Load stats
+  const loadStats = useCallback(async () => {
+    setIsLoadingStats(true);
+    try {
+      const data = await fetchAdminStats();
+      setStats(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load stats');
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }, []);
+
+  // Load tokens
+  const loadTokens = useCallback(async (page = 1, status?: string) => {
+    setIsLoadingTokens(true);
+    try {
+      const data = await fetchAdminTokens(status, page, 20);
+      setTokens(data.tokens);
+      setTokensTotal(data.total);
+      setTokensPage(data.page);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load tokens');
+    } finally {
+      setIsLoadingTokens(false);
+    }
+  }, []);
+
+  // Load config
+  const loadConfig = useCallback(async () => {
+    try {
+      const data = await fetchAdminConfig();
+      setConfig(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load config');
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadStats();
+    loadTokens(1, undefined);
+    if (!config) loadConfig();
+  }, []);
+
+  // Tab change loads
+  useEffect(() => {
+    if (activeTab === 'overview') loadStats();
+    if (activeTab === 'tokens') loadTokens(1, tokenStatusFilter || undefined);
+    if (activeTab === 'settings' && !config) loadConfig();
+  }, [activeTab, tokenStatusFilter]);
+
+  // Token management action
+  const handleTokenAction = async (id: string, action: 'revoke' | 'expire' | 'reactivate', reason?: string) => {
+    try {
+      await manageToken(id, action, reason);
+      setSuccess(`Token ${action}d successfully`);
+      loadTokens(tokensPage, tokenStatusFilter || undefined);
+      loadStats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to ${action} token`);
+    }
+  };
+
+  // ─── Overview Tab ────────────────────────────────────────────
+  const renderOverview = () => {
+    if (isLoadingStats && !stats) {
+      return (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-[#E50914] animate-spin" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { label: 'Total Tokens', value: stats?.totalTokens ?? 0, icon: Ticket, color: 'text-[#E50914]' },
+            { label: 'Active', value: stats?.activeTokens ?? 0, icon: Shield, color: 'text-green-400' },
+            { label: 'Available', value: stats?.availableTokens ?? 0, icon: Plus, color: 'text-blue-400' },
+            { label: 'Revoked', value: stats?.revokedTokens ?? 0, icon: Ban, color: 'text-red-400' },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-[#1A1A1A] rounded-xl p-4 border border-white/5"
+            >
+              <Icon className={`w-5 h-5 ${color} mb-2`} />
+              <p className="text-white text-xl font-bold">{value.toLocaleString()}</p>
+              <p className="text-white/40 text-xs mt-1">{label}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Revenue Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[
+            { label: 'Total Revenue', value: stats?.totalRevenue ?? 0, icon: DollarSign, color: 'text-green-400' },
+            { label: 'This Week', value: stats?.revenueThisWeek ?? 0, icon: TrendingUp, color: 'text-blue-400' },
+            { label: 'Today', value: stats?.revenueToday ?? 0, icon: Clock, color: 'text-yellow-400' },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <Icon className={`w-5 h-5 ${color}`} />
+              </div>
+              <p className="text-white text-2xl font-bold">UGX {formatUGX(value)}</p>
+              <p className="text-white/40 text-xs mt-1">{label}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Tier Breakdown */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Stream', value: stats?.streamCount ?? 0, icon: Play, color: '#E50914' },
+            { label: 'Download', value: stats?.downloadCount ?? 0, icon: Download, color: '#831010' },
+            { label: 'Trial', value: stats?.trialCount ?? 0, icon: Clock, color: '#B3B3B3' },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className="bg-[#1A1A1A] rounded-xl p-4 border border-white/5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-white/50 text-xs">{label}</span>
+              </div>
+              <p className="text-white text-lg font-bold">{value.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Devices */}
+        <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+          <div className="flex items-center gap-2 mb-3">
+            <Smartphone className="w-4 h-4 text-white/40" />
+            <span className="text-white/50 text-sm">Total Devices</span>
+          </div>
+          <p className="text-white text-2xl font-bold">{(stats?.totalDevices ?? 0).toLocaleString()}</p>
+        </div>
+
+        {/* Recent Activations */}
+        <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+          <h3 className="text-white text-sm font-semibold mb-4">Recent Activations</h3>
+          {stats?.recentActivations && stats.recentActivations.length > 0 ? (
+            <div className="space-y-3">
+              {stats.recentActivations.map((item, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#E50914]/10 flex items-center justify-center flex-shrink-0">
+                    <Shield className="w-4 h-4 text-[#E50914]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-white text-sm font-mono font-medium">{item.code}</p>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] px-1.5 py-0 ${
+                          item.tier === 'download'
+                            ? 'border-purple-500/50 text-purple-400'
+                            : item.tier === 'trial'
+                              ? 'border-yellow-500/50 text-yellow-400'
+                              : 'border-[#E50914]/50 text-[#E50914]'
+                        }`}
+                      >
+                        {item.tier}
+                      </Badge>
+                    </div>
+                    <p className="text-white/30 text-xs mt-0.5 truncate">{item.deviceInfo || 'Unknown device'}</p>
+                  </div>
+                  <span className="text-white/20 text-[10px] flex-shrink-0">{timeAgo(item.activatedAt)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-white/30 text-sm">No recent activations</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Tokens Tab ──────────────────────────────────────────────
+  const renderTokens = () => {
+    const statusFilters = [
+      { value: '', label: 'All' },
+      { value: 'available', label: 'Available' },
+      { value: 'active', label: 'Active' },
+      { value: 'expired', label: 'Expired' },
+      { value: 'revoked', label: 'Revoked' },
+    ];
+
+    return (
+      <div className="space-y-4">
+        {/* Filters */}
+        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+          {statusFilters.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => {
+                setTokenStatusFilter(value);
+                loadTokens(1, value || undefined);
+              }}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                tokenStatusFilter === value
+                  ? 'bg-[#E50914] text-white'
+                  : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Token Table */}
+        {isLoadingTokens ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 text-[#E50914] animate-spin" />
+          </div>
+        ) : tokens.length === 0 ? (
+          <div className="text-center py-16">
+            <Ticket className="w-12 h-12 text-white/10 mx-auto mb-3" />
+            <p className="text-white/40 text-sm">No tokens found</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-[#1A1A1A] rounded-xl overflow-hidden border border-white/5">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Code</th>
+                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Tier</th>
+                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Status</th>
+                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden md:table-cell">Note</th>
+                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden sm:table-cell">Created</th>
+                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden lg:table-cell">Device</th>
+                      <th className="text-right text-white/40 text-xs font-medium px-4 py-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tokens.map((token) => (
+                      <tr key={token.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="text-white text-sm font-mono font-medium">{token.code}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] px-1.5 py-0 ${
+                              token.tier === 'download'
+                                ? 'border-purple-500/50 text-purple-400'
+                                : token.tier === 'trial'
+                                  ? 'border-yellow-500/50 text-yellow-400'
+                                  : 'border-[#E50914]/50 text-[#E50914]'
+                            }`}
+                          >
+                            {token.tier}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 text-xs ${
+                            token.status === 'active' ? 'text-green-400' :
+                            token.status === 'available' ? 'text-blue-400' :
+                            token.status === 'expired' ? 'text-orange-400' :
+                            'text-red-400'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              token.status === 'active' ? 'bg-green-400' :
+                              token.status === 'available' ? 'bg-blue-400' :
+                              token.status === 'expired' ? 'bg-orange-400' :
+                              'bg-red-400'
+                            }`} />
+                            {token.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-white/40 text-xs hidden md:table-cell max-w-[120px] truncate">
+                          {token.note || '—'}
+                        </td>
+                        <td className="px-4 py-3 text-white/40 text-xs hidden sm:table-cell">
+                          {formatDate(token.createdAt)}
+                        </td>
+                        <td className="px-4 py-3 text-white/30 text-[10px] hidden lg:table-cell max-w-[100px] truncate">
+                          {token.redeemedDeviceInfo || '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 justify-end">
+                            {token.status === 'active' && (
+                              <button
+                                onClick={() => handleTokenAction(token.id, 'revoke', 'Admin revoked')}
+                                className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
+                                title="Revoke"
+                              >
+                                <Ban className="w-3.5 h-3.5 text-red-400" />
+                              </button>
+                            )}
+                            {token.status === 'revoked' && (
+                              <button
+                                onClick={() => handleTokenAction(token.id, 'reactivate')}
+                                className="p-1.5 hover:bg-green-500/10 rounded-lg transition-colors"
+                                title="Reactivate"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-green-400" />
+                              </button>
+                            )}
+                            {token.status === 'available' && (
+                              <button
+                                onClick={() => handleTokenAction(token.id, 'revoke', 'Cancelled by admin')}
+                                className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
+                                title="Revoke"
+                              >
+                                <Ban className="w-3.5 h-3.5 text-red-400" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Pagination */}
+            {tokensTotal > 20 && (
+              <div className="flex items-center justify-between">
+                <p className="text-white/30 text-xs">
+                  Showing {((tokensPage - 1) * 20) + 1}–{Math.min(tokensPage * 20, tokensTotal)} of {tokensTotal}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => loadTokens(tokensPage - 1, tokenStatusFilter || undefined)}
+                    disabled={tokensPage <= 1}
+                    className="p-1.5 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-white/50" />
+                  </button>
+                  <span className="text-white/50 text-xs">Page {tokensPage}</span>
+                  <button
+                    onClick={() => loadTokens(tokensPage + 1, tokenStatusFilter || undefined)}
+                    disabled={tokensPage * 20 >= tokensTotal}
+                    className="p-1.5 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30"
+                  >
+                    <ChevronRight className="w-4 h-4 text-white/50" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ─── Revenue Tab ─────────────────────────────────────────────
+  const renderRevenue = () => {
+    if (isLoadingStats && !stats) {
+      return (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-[#E50914] animate-spin" />
+        </div>
+      );
+    }
+
+    const dailyRevenue = stats?.dailyRevenue || [];
+
+    return (
+      <div className="space-y-6">
+        {/* Revenue Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+            <DollarSign className="w-5 h-5 text-green-400 mb-2" />
+            <p className="text-white text-2xl font-bold">UGX {formatUGX(stats?.totalRevenue ?? 0)}</p>
+            <p className="text-white/40 text-xs mt-1">Total Revenue</p>
+          </div>
+          <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+            <TrendingUp className="w-5 h-5 text-blue-400 mb-2" />
+            <p className="text-white text-2xl font-bold">UGX {formatUGX(stats?.revenueThisWeek ?? 0)}</p>
+            <p className="text-white/40 text-xs mt-1">This Week</p>
+          </div>
+          <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+            <Clock className="w-5 h-5 text-yellow-400 mb-2" />
+            <p className="text-white text-2xl font-bold">UGX {formatUGX(stats?.revenueToday ?? 0)}</p>
+            <p className="text-white/40 text-xs mt-1">Today</p>
+          </div>
+        </div>
+
+        {/* Daily Revenue Chart */}
+        {dailyRevenue.length > 0 && (
+          <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+            <h3 className="text-white text-sm font-semibold mb-4">Daily Revenue (Last 7 days)</h3>
+            <div className="flex items-end gap-2 h-48">
+              {dailyRevenue.map(({ date, amount }, i) => {
+                const maxAmount = Math.max(...dailyRevenue.map((d) => d.amount), 1);
+                const height = (amount / maxAmount) * 100;
+                return (
+                  <div key={date} className="flex-1 flex flex-col items-center gap-2">
+                    <span className="text-white/40 text-[10px]">
+                      {amount > 0 ? formatUGX(amount) : '0'}
+                    </span>
+                    <div
+                      className="w-full rounded-t-lg relative overflow-hidden transition-all"
+                      style={{ height: `${Math.max(height, 2)}%` }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#E50914] to-[#E50914]/60 rounded-t-lg" />
+                    </div>
+                    <span className="text-white/30 text-[10px]">
+                      {new Date(date).toLocaleDateString('en-GB', { weekday: 'short' })}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tier Breakdown */}
+        <div className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+          <h3 className="text-white text-sm font-semibold mb-4">Revenue by Tier</h3>
+          <div className="space-y-4">
+            {[
+              { label: 'Stream', count: stats?.streamCount ?? 0, color: '#E50914' },
+              { label: 'Download', count: stats?.downloadCount ?? 0, color: '#831010' },
+              { label: 'Trial', count: stats?.trialCount ?? 0, color: '#B3B3B3' },
+            ].map(({ label, count, color }) => {
+              const total = (stats?.streamCount ?? 0) + (stats?.downloadCount ?? 0) + (stats?.trialCount ?? 0) || 1;
+              const pct = ((count / total) * 100).toFixed(1);
+              return (
+                <div key={label} className="flex items-center gap-4">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-white text-sm font-medium">{label}</span>
+                      <span className="text-white/50 text-xs">{count} tokens ({pct}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ backgroundColor: color, width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Toast messages ──────────────────────────────────────────
+  const renderToast = () => {
+    if (!error && !success) return null;
+    return (
+      <div className="fixed top-20 right-4 z-50 space-y-2">
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 50 }}
+            className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex items-center gap-2 max-w-sm"
+          >
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-sm text-red-400">{error}</p>
+            <button onClick={() => setError(null)} className="ml-auto">
+              <X className="w-3 h-3 text-red-400/60" />
+            </button>
+          </motion.div>
+        )}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 50 }}
+            className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 flex items-center gap-2 max-w-sm"
+          >
+            <Check className="w-4 h-4 text-green-400 shrink-0" />
+            <p className="text-sm text-green-400">{success}</p>
+          </motion.div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -103,23 +570,25 @@ export default function AdminDashboard() {
       animate={{ opacity: 1 }}
       className="pt-20 px-4 md:px-12 pb-24 md:pb-8"
     >
+      {renderToast()}
+
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-white text-xl md:text-2xl font-bold">Admin Dashboard</h1>
-            <p className="text-white/50 text-sm mt-1">Manage your streaming platform</p>
+            <p className="text-white/50 text-sm mt-1">Manage tokens, revenue & settings</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-xs font-medium rounded-lg transition-colors">
-              <RefreshCw className="w-3.5 h-3.5" />
-              Refresh
-            </button>
-            <button className="flex items-center gap-1.5 px-3 py-2 bg-[#E50914] hover:bg-[#ff1a25] text-white text-xs font-medium rounded-lg transition-colors">
-              <Settings className="w-3.5 h-3.5" />
-              Settings
-            </button>
-          </div>
+          <button
+            onClick={() => {
+              loadStats();
+              loadTokens(tokensPage, tokenStatusFilter || undefined);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 text-white/70 text-xs font-medium rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${(isLoadingStats || isLoadingTokens) ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
 
         {/* Tabs */}
@@ -140,302 +609,334 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { label: 'Total Users', value: analyticsData.totalUsers.toLocaleString(), icon: Users, change: '+12.4%', up: true },
-                { label: 'Active Users', value: analyticsData.activeUsers.toLocaleString(), icon: Activity, change: '+8.2%', up: true },
-                { label: 'Total Revenue', value: `UGX ${(analyticsData.totalRevenue / 1000000).toFixed(1)}M`, icon: DollarSign, change: '+18.5%', up: true },
-                { label: 'Total Streams', value: analyticsData.totalStreams.toLocaleString(), icon: Play, change: '+22.1%', up: true },
-              ].map(({ label, value, icon: Icon, change, up }) => (
-                <div key={label} className="bg-[#1A1A1A] rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <Icon className="w-5 h-5 text-[#E50914]" />
-                    <span className={`flex items-center gap-0.5 text-xs font-medium ${up ? 'text-green-400' : 'text-red-400'}`}>
-                      {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                      {change}
-                    </span>
-                  </div>
-                  <p className="text-white text-xl font-bold">{value}</p>
-                  <p className="text-white/40 text-xs mt-1">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* User Growth Chart (visual) */}
-            <div className="bg-[#1A1A1A] rounded-xl p-5">
-              <h3 className="text-white text-sm font-semibold mb-4">User Growth</h3>
-              <div className="flex items-end gap-3 h-40">
-                {analyticsData.userGrowth.map(({ month, users }, i) => {
-                  const maxUsers = Math.max(...analyticsData.userGrowth.map(u => u.users));
-                  const height = (users / maxUsers) * 100;
-                  return (
-                    <div key={month} className="flex-1 flex flex-col items-center gap-2">
-                      <span className="text-white/50 text-[10px]">{(users / 1000).toFixed(1)}k</span>
-                      <div className="w-full bg-[#E50914]/20 rounded-t-lg relative overflow-hidden" style={{ height: `${height}%` }}>
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#E50914] to-[#E50914]/60 rounded-t-lg" />
-                      </div>
-                      <span className="text-white/40 text-[10px]">{month}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Top Content */}
-            <div className="bg-[#1A1A1A] rounded-xl p-5">
-              <h3 className="text-white text-sm font-semibold mb-4">Top Performing Content</h3>
-              <div className="space-y-3">
-                {analyticsData.topContent.map((item, i) => (
-                  <div key={item.title} className="flex items-center gap-3">
-                    <span className="text-white/30 text-sm font-bold w-6">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium">{item.title}</p>
-                      <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-white/40 text-xs flex items-center gap-1"><Eye className="w-3 h-3" />{item.views.toLocaleString()} views</span>
-                        <span className="text-white/40 text-xs flex items-center gap-1"><Star className="w-3 h-3 text-yellow-400" />{item.rating}</span>
-                        <span className="text-green-400 text-xs">UGX {formatUGX(item.revenue)}</span>
-                      </div>
-                    </div>
-                    <div className="w-16 h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#E50914] rounded-full" style={{ width: `${(item.views / analyticsData.topContent[0].views) * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="bg-[#1A1A1A] rounded-xl p-5">
-              <h3 className="text-white text-sm font-semibold mb-4">Recent Activity</h3>
-              <div className="space-y-3">
-                {analyticsData.recentActivity.map((item, i) => {
-                  const iconMap = {
-                    user: <Users className="w-4 h-4 text-blue-400" />,
-                    payment: <DollarSign className="w-4 h-4 text-green-400" />,
-                    content: <Film className="w-4 h-4 text-purple-400" />,
-                    alert: <AlertTriangle className="w-4 h-4 text-yellow-400" />,
-                  };
-                  return (
-                    <div key={i} className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        {iconMap[item.type as keyof typeof iconMap]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white/70 text-xs">{item.message}</p>
-                        <p className="text-white/30 text-[10px] mt-0.5">{item.time}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Users Tab */}
-        {activeTab === 'users' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  placeholder="Search users by name or phone..."
-                  className="w-full bg-[#1A1A1A] text-white placeholder:text-white/30 rounded-xl pl-10 pr-4 py-2.5 text-sm border border-white/10 focus:outline-none focus:border-[#E50914]/50"
-                />
-              </div>
-              <button className="flex items-center gap-1.5 px-4 py-2.5 bg-[#E50914] text-white text-xs font-medium rounded-xl hover:bg-[#ff1a25] transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-                Add User
-              </button>
-            </div>
-
-            <div className="bg-[#1A1A1A] rounded-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/5">
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">User</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden sm:table-cell">Phone</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Plan</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden md:table-cell">Status</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden md:table-cell">Streams</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((user) => (
-                      <tr key={user.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-[#E50914]/20 flex items-center justify-center text-white text-xs font-bold">
-                              {user.name.charAt(0)}
-                            </div>
-                            <span className="text-white text-sm">{user.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-white/50 text-sm hidden sm:table-cell">{user.phone}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-                            user.plan === 'Annual' ? 'bg-yellow-500/15 text-yellow-400' :
-                            user.plan === 'Monthly' ? 'bg-blue-500/15 text-blue-400' :
-                            user.plan === 'Weekly' ? 'bg-green-500/15 text-green-400' :
-                            'bg-white/10 text-white/40'
-                          }`}>
-                            <Crown className="w-3 h-3" />
-                            {user.plan}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs ${
-                            user.status === 'active' ? 'text-green-400' : 'text-orange-400'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'active' ? 'bg-green-400' : 'bg-orange-400'}`} />
-                            {user.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-white/50 text-sm hidden md:table-cell">{user.streams}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5 text-white/40" /></button>
-                            <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><MoreVertical className="w-3.5 h-3.5 text-white/40" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Content Tab */}
-        {activeTab === 'content' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-white text-sm font-semibold">Content Library</h3>
-              <button className="flex items-center gap-1.5 px-4 py-2 bg-[#E50914] text-white text-xs font-medium rounded-xl hover:bg-[#ff1a25] transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-                Upload Content
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {analyticsData.topContent.map((item) => (
-                <div key={item.title} className="bg-[#1A1A1A] rounded-xl p-4 flex items-start gap-3">
-                  <div className="w-16 h-10 rounded-lg bg-gradient-to-br from-[#E50914]/30 to-[#831010]/30 flex items-center justify-center flex-shrink-0">
-                    <Film className="w-5 h-5 text-white/30" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-white text-sm font-medium line-clamp-1">{item.title}</h4>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="text-white/40 text-xs flex items-center gap-1"><Eye className="w-3 h-3" />{item.views.toLocaleString()}</span>
-                      <span className="text-white/40 text-xs flex items-center gap-1"><Star className="w-3 h-3 text-yellow-400" />{item.rating}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Edit3 className="w-3.5 h-3.5 text-white/40" /></button>
-                    <button className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Trash2 className="w-3.5 h-3.5 text-white/40" /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Analytics Tab */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            {/* Key Metrics */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[
-                { label: 'Avg Watch Time', value: analyticsData.avgWatchTime, icon: Clock },
-                { label: 'Conversion Rate', value: analyticsData.conversionRate, icon: TrendingUp },
-                { label: 'Churn Rate', value: analyticsData.churnRate, icon: Activity },
-                { label: 'New Users/Month', value: analyticsData.newUsersThisMonth.toLocaleString(), icon: Users },
-                { label: 'Streams/Day', value: '5,226', icon: Play },
-                { label: 'Mobile Users', value: '78%', icon: Smartphone },
-              ].map(({ label, value, icon: Icon }) => (
-                <div key={label} className="bg-[#1A1A1A] rounded-xl p-4">
-                  <Icon className="w-5 h-5 text-[#E50914] mb-2" />
-                  <p className="text-white text-lg font-bold">{value}</p>
-                  <p className="text-white/40 text-xs mt-1">{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Top Genres */}
-            <div className="bg-[#1A1A1A] rounded-xl p-5">
-              <h3 className="text-white text-sm font-semibold mb-4">Top Genres by Views</h3>
-              <div className="space-y-3">
-                {analyticsData.topGenres.map((genre) => (
-                  <div key={genre.name}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-white text-sm">{genre.name}</span>
-                      <span className="text-white/40 text-xs">{genre.count.toLocaleString()} views ({genre.percentage}%)</span>
-                    </div>
-                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#E50914] rounded-full transition-all" style={{ width: `${genre.percentage}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Revenue Tab */}
-        {activeTab === 'revenue' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="bg-[#1A1A1A] rounded-xl p-5">
-                <DollarSign className="w-5 h-5 text-green-400 mb-2" />
-                <p className="text-white text-2xl font-bold">UGX {(analyticsData.totalRevenue / 1000000).toFixed(1)}M</p>
-                <p className="text-white/40 text-xs mt-1">Total Revenue</p>
-              </div>
-              <div className="bg-[#1A1A1A] rounded-xl p-5">
-                <TrendingUp className="w-5 h-5 text-blue-400 mb-2" />
-                <p className="text-white text-2xl font-bold">UGX {(analyticsData.monthlyRevenue / 1000000).toFixed(1)}M</p>
-                <p className="text-white/40 text-xs mt-1">Monthly Revenue</p>
-              </div>
-              <div className="bg-[#1A1A1A] rounded-xl p-5">
-                <Users className="w-5 h-5 text-purple-400 mb-2" />
-                <p className="text-white text-2xl font-bold">UGX 3,912</p>
-                <p className="text-white/40 text-xs mt-1">Revenue Per User</p>
-              </div>
-            </div>
-
-            {/* Revenue by Plan */}
-            <div className="bg-[#1A1A1A] rounded-xl p-5">
-              <h3 className="text-white text-sm font-semibold mb-4">Revenue by Plan</h3>
-              <div className="space-y-4">
-                {analyticsData.revenueByPlan.map(({ plan, amount, users, color }) => (
-                  <div key={plan} className="flex items-center gap-4">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-white text-sm font-medium">{plan}</span>
-                        <span className="text-white/60 text-sm">UGX {formatUGX(amount)}</span>
-                      </div>
-                      <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ backgroundColor: color, width: `${(amount / analyticsData.revenueByPlan[0].amount) * 100}%` }} />
-                      </div>
-                      <p className="text-white/30 text-xs mt-1">{users.toLocaleString()} subscribers</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Tab Content */}
+        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'tokens' && renderTokens()}
+        {activeTab === 'generate' && <GeneratorWrapper />}
+        {activeTab === 'settings' && <SettingsWrapper initialConfig={config} />}
+        {activeTab === 'revenue' && renderRevenue()}
       </div>
     </motion.div>
   );
+}
+
+// Extracted components to avoid hooks-in-conditions issue
+function GeneratorWrapper() {
+  const { loadStats } = useGeneratorHooks();
+  const [genTier, setGenTier] = useState<'stream' | 'download' | 'trial'>('stream');
+  const [genCount, setGenCount] = useState(5);
+  const [genNote, setGenNote] = useState('');
+  const [generatedCodes, setGeneratedCodes] = useState<TokenInfo[]>([]);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const codes = await generateTokens(genCount, genTier, genNote || undefined);
+      setGeneratedCodes(codes);
+      setSuccess(`Generated ${codes.length} ${genTier} token(s)`);
+      loadStats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate tokens');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const copyCode = (code: string, id: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+          <p className="text-sm text-red-400">{error}</p>
+          <button onClick={() => setError(null)} className="ml-auto"><X className="w-3 h-3 text-red-400/60" /></button>
+        </div>
+      )}
+      {success && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 flex items-center gap-2">
+          <Check className="w-4 h-4 text-green-400 shrink-0" />
+          <p className="text-sm text-green-400">{success}</p>
+        </div>
+      )}
+      <div className="bg-[#1A1A1A] rounded-xl p-6 border border-white/5">
+        <h3 className="text-white text-sm font-semibold mb-4">Generate New Tokens</h3>
+        <div className="space-y-2 mb-4">
+          <Label className="text-white/70 text-xs">Token Tier</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { value: 'stream', label: 'Stream', icon: Play, desc: 'Streaming only' },
+              { value: 'download', label: 'Download', icon: Download, desc: 'Stream + Download' },
+              { value: 'trial', label: 'Trial', icon: Clock, desc: 'Free trial' },
+            ].map(({ value, label, icon: Icon, desc }) => (
+              <button
+                key={value}
+                onClick={() => setGenTier(value as 'stream' | 'download' | 'trial')}
+                className={`p-3 rounded-xl text-center transition-all border ${
+                  genTier === value
+                    ? 'bg-[#E50914]/10 border-[#E50914]/30 text-white'
+                    : 'bg-white/3 border-white/5 text-white/50 hover:bg-white/5'
+                }`}
+              >
+                <Icon className={`w-5 h-5 mx-auto mb-1 ${genTier === value ? 'text-[#E50914]' : ''}`} />
+                <p className="text-xs font-medium">{label}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">{desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          <div className="space-y-1.5">
+            <Label className="text-white/70 text-xs">Number of Codes</Label>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={genCount}
+              onChange={(e) => setGenCount(Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
+              className="h-10 bg-white/5 border-white/10 text-white rounded-lg"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-white/70 text-xs">Note (optional)</Label>
+            <Input
+              type="text"
+              placeholder="e.g. Batch for WhatsApp group"
+              value={genNote}
+              onChange={(e) => setGenNote(e.target.value)}
+              className="h-10 bg-white/5 border-white/10 text-white placeholder:text-white/20 rounded-lg"
+            />
+          </div>
+        </div>
+        <Button
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          className="w-full h-11 bg-[#E50914] hover:bg-[#E50914]/90 text-white rounded-xl font-semibold gap-2"
+        >
+          {isGenerating ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+          ) : (
+            <><Plus className="w-4 h-4" /> Generate {genCount} Code{genCount > 1 ? 's' : ''}</>
+          )}
+        </Button>
+      </div>
+      {generatedCodes.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+          <h3 className="text-white text-sm font-semibold mb-3">Generated Codes</h3>
+          <div className="space-y-2 max-h-96 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
+            {generatedCodes.map((t) => (
+              <div key={t.id} className="flex items-center justify-between bg-white/3 rounded-lg px-3 py-2.5 border border-white/5">
+                <div className="flex items-center gap-3">
+                  <span className="text-white font-mono text-sm font-medium">{t.code}</span>
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10 text-white/40">{t.tier}</Badge>
+                </div>
+                <button onClick={() => copyCode(t.code, t.id)} className="flex items-center gap-1 text-xs text-white/50 hover:text-white transition-colors">
+                  {copiedId === t.id ? (
+                    <><Check className="w-3.5 h-3.5 text-green-400" /><span className="text-green-400">Copied!</span></>
+                  ) : (
+                    <><Copy className="w-3.5 h-3.5" /> Copy</>
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+function SettingsWrapper({ initialConfig }: { initialConfig: AdminConfig | null }) {
+  const { dispatch } = useAppStore();
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [config, setConfig] = useState<AdminConfig | null>(null);
+
+  useEffect(() => {
+    if (initialConfig && 'id' in initialConfig) {
+      setConfig(initialConfig as AdminConfig);
+    } else {
+      fetchAdminConfig().then(setConfig).catch(() => {});
+    }
+  }, [initialConfig]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  if (!config) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-[#E50914] animate-spin" />
+      </div>
+    );
+  }
+
+  const updateField = (field: string, value: unknown) => {
+    setConfig((prev) => prev ? { ...prev, [field]: value } : prev);
+  };
+
+  const handleSave = async () => {
+    if (!config) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      const updated = await updateAdminConfig(config);
+      setConfig(updated);
+      dispatch({ type: 'SET_ADMIN_CONFIG', payload: updated });
+      setSuccess('Settings saved successfully');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const sections = [
+    {
+      title: 'Branding',
+      fields: [
+        { key: 'siteName', label: 'Site Name', type: 'text' as const },
+        { key: 'whatsapp', label: 'WhatsApp Number', type: 'text' as const },
+        { key: 'currency', label: 'Currency Code', type: 'text' as const },
+      ],
+    },
+    {
+      title: 'Pricing',
+      fields: [
+        { key: 'streamPrice', label: 'Stream Price', type: 'number' as const },
+        { key: 'downloadPrice', label: 'Download Price', type: 'number' as const },
+        { key: 'planDurationDays', label: 'Plan Duration (days)', type: 'number' as const },
+      ],
+    },
+    {
+      title: 'Trial',
+      fields: [
+        { key: 'trialEnabled', label: 'Trial Enabled', type: 'switch' as const },
+        { key: 'trialDurationHours', label: 'Trial Duration (hours)', type: 'number' as const },
+      ],
+    },
+    {
+      title: 'Downloads',
+      fields: [
+        { key: 'maxDownloadsPerPeriod', label: 'Max Downloads/Period', type: 'number' as const },
+      ],
+    },
+    {
+      title: 'Token Format',
+      fields: [
+        { key: 'tokenPrefix', label: 'Token Prefix', type: 'text' as const },
+        { key: 'tokenLength', label: 'Token Length', type: 'number' as const },
+      ],
+    },
+    {
+      title: 'Device Policy',
+      fields: [
+        { key: 'allowDeviceTransfer', label: 'Allow Device Transfer', type: 'switch' as const },
+        { key: 'maxDevicesPerToken', label: 'Max Devices/Token', type: 'number' as const },
+      ],
+    },
+    {
+      title: 'Refund Policy',
+      fields: [
+        { key: 'defaultRefundPolicy', label: 'Default Refund Policy', type: 'select' as const, options: ['none', 'partial', 'full'] },
+        { key: 'defaultRefundPercent', label: 'Default Refund %', type: 'number' as const },
+      ],
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+          <p className="text-sm text-red-400">{error}</p>
+          <button onClick={() => setError(null)} className="ml-auto"><X className="w-3 h-3 text-red-400/60" /></button>
+        </div>
+      )}
+      {success && (
+        <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3 flex items-center gap-2">
+          <Check className="w-4 h-4 text-green-400 shrink-0" />
+          <p className="text-sm text-green-400">{success}</p>
+        </div>
+      )}
+      {sections.map((section) => (
+        <div key={section.title} className="bg-[#1A1A1A] rounded-xl p-5 border border-white/5">
+          <h3 className="text-white text-sm font-semibold mb-4">{section.title}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {section.fields.map((field) => (
+              <div key={field.key} className="space-y-1.5">
+                <Label className="text-white/60 text-xs">{field.label}</Label>
+                {field.type === 'switch' ? (
+                  <Switch
+                    checked={config[field.key] as boolean}
+                    onCheckedChange={(checked) => updateField(field.key, checked)}
+                  />
+                ) : field.type === 'select' ? (
+                  <select
+                    value={config[field.key] as string}
+                    onChange={(e) => updateField(field.key, e.target.value)}
+                    className="w-full h-10 bg-white/5 border-white/10 text-white rounded-lg px-3 text-sm focus:outline-none focus:border-[#E50914]/50"
+                  >
+                    {field.options?.map((opt) => (
+                      <option key={opt} value={opt} className="bg-[#1A1A1A]">{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    type={field.type}
+                    value={config[field.key] as string | number}
+                    onChange={(e) => updateField(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
+                    className="h-10 bg-white/5 border-white/10 text-white rounded-lg"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <Button
+        onClick={handleSave}
+        disabled={isSaving}
+        className="w-full h-11 bg-[#E50914] hover:bg-[#E50914]/90 text-white rounded-xl font-semibold gap-2"
+      >
+        {isSaving ? (
+          <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+        ) : (
+          <><Settings className="w-4 h-4" /> Save Settings</>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// Helper hooks shared across tab components
+function useGeneratorHooks() {
+  const loadStats = useCallback(async () => {
+    try {
+      await fetchAdminStats();
+    } catch { /* silent */ }
+  }, []);
+  return { loadStats };
 }

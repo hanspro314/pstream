@@ -16,6 +16,7 @@ import type {
   SortOption,
   User,
   AuthState,
+  AdminConfig,
 } from './types';
 
 // ─── Review Types (local) ───────────────────────────────────────
@@ -60,6 +61,17 @@ interface AppState {
   watchlist: WatchlistItem[];
   recentSearches: string[];
   userReviews: StoredReview[];
+
+  // Token
+  tokenSession: {
+    code: string | null;
+    tier: 'stream' | 'download' | 'trial' | null;
+    expiresAt: string | null;
+    maxDownloads: number;
+    canDownload: boolean;
+    daysRemaining: number;
+  } | null;
+  adminConfig: AdminConfig | null;
 }
 
 // ─── Actions ─────────────────────────────────────────────────────
@@ -101,6 +113,8 @@ type AppAction =
   | { type: 'VERIFY_OTP_SUCCESS'; payload: { user: User; token: string } }
   | { type: 'UPDATE_USER'; payload: Partial<User> }
   | { type: 'CLEAR_AUTH_ERROR' }
+  | { type: 'SET_TOKEN_SESSION'; payload: { code: string; tier: string; expiresAt: string; maxDownloads: number } | null }
+  | { type: 'SET_ADMIN_CONFIG'; payload: AdminConfig }
   | { type: 'HYDRATE'; payload: {
       auth: AuthState;
       profile: UserProfile;
@@ -180,6 +194,8 @@ const initialState: AppState = {
   watchlist: [],
   recentSearches: [],
   userReviews: [],
+  tokenSession: null,
+  adminConfig: null,
 };
 
 // ─── Reducer ─────────────────────────────────────────────────────
@@ -342,10 +358,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'LOGOUT': {
       try { localStorage.removeItem('pstream_session_token'); } catch { /* */ }
       try { localStorage.removeItem('pstream_auth'); } catch { /* */ }
+      try { localStorage.removeItem('pstream_token_session'); } catch { /* */ }
       return {
         ...state,
         auth: defaultAuth,
         profile: defaultProfile,
+        tokenSession: null,
         currentView: 'login',
         navigationStack: ['login'],
       };
@@ -434,8 +452,36 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         auth: { ...state.auth, error: null },
       };
+    case 'SET_TOKEN_SESSION': {
+      if (action.payload === null) {
+        try { localStorage.removeItem('pstream_token_session'); } catch { /* */ }
+        return { ...state, tokenSession: null };
+      }
+      const session = {
+        code: action.payload.code,
+        tier: action.payload.tier as 'stream' | 'download' | 'trial',
+        expiresAt: action.payload.expiresAt,
+        maxDownloads: action.payload.maxDownloads,
+        canDownload: action.payload.tier === 'download',
+        daysRemaining: Math.max(0, Math.ceil(
+          (new Date(action.payload.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+        )),
+      };
+      try {
+        localStorage.setItem('pstream_token_session', JSON.stringify(action.payload));
+      } catch { /* quota */ }
+      return { ...state, tokenSession: session };
+    }
+    case 'SET_ADMIN_CONFIG':
+      return { ...state, adminConfig: action.payload };
     case 'HYDRATE': {
       const { auth, profile, watchProgress, watchlist, recentSearches, userReviews } = action.payload;
+      // Check for token session in localStorage to decide navigation
+      let hasTokenSession = false;
+      try {
+        hasTokenSession = !!localStorage.getItem('pstream_token_session');
+      } catch { /* */ }
+      const shouldAuth = auth.isAuthenticated || hasTokenSession;
       return {
         ...state,
         auth,
@@ -445,9 +491,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
         recentSearches,
         userReviews,
         hydrated: true,
-        // If user was previously authenticated, stay on home; otherwise go to login
-        currentView: auth.isAuthenticated ? 'home' : 'login',
-        navigationStack: [auth.isAuthenticated ? 'home' : 'login'],
+        currentView: shouldAuth ? 'home' : 'login',
+        navigationStack: [shouldAuth ? 'home' : 'login'],
       };
     }
     default:
@@ -481,7 +526,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const recentSearches = loadFromStorage<string[]>('recentSearches', []);
     const userReviews = loadFromStorage<StoredReview[]>('reviews', []);
 
+    // Restore token session from localStorage
+    let tokenSessionPayload: { code: string; tier: string; expiresAt: string; maxDownloads: number } | null = null;
+    try {
+      const storedToken = localStorage.getItem('pstream_token_session');
+      if (storedToken) tokenSessionPayload = JSON.parse(storedToken);
+    } catch { /* */ }
+
     dispatch({ type: 'HYDRATE', payload: { auth, profile, watchProgress, watchlist, recentSearches, userReviews } });
+
+    // Restore token session after hydration
+    if (tokenSessionPayload) {
+      dispatch({ type: 'SET_TOKEN_SESSION', payload: tokenSessionPayload });
+    }
   }, [state.hydrated]);
 
   const navigate = useCallback((view: AppView) => {
