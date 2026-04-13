@@ -102,8 +102,17 @@ export async function findAccessCode(where: { id?: string; code?: string }) {
     return r.rows[0] || null;
   }
   if (where.code) {
-    const r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE code = ?', args: [where.code] });
-    return r.rows[0] || null;
+    const normalized = where.code.trim().toUpperCase();
+    // Try exact match first
+    let r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE code = ?', args: [normalized] });
+    if (r.rows[0]) return r.rows[0];
+    // Fallback: match by alphanumeric part only (handles stripped dashes)
+    const alphaOnly = normalized.replace(/[^A-Z0-9]/g, '');
+    if (alphaOnly !== normalized) {
+      r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE REPLACE(code, "-", "") = ?', args: [alphaOnly] });
+      return r.rows[0] || null;
+    }
+    return null;
   }
   return null;
 }
