@@ -106,10 +106,17 @@ export async function findAccessCode(where: { id?: string; code?: string }) {
     // Try exact match first
     let r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE code = ?', args: [normalized] });
     if (r.rows[0]) return r.rows[0];
-    // Fallback: match by alphanumeric part (handles stripped dashes like PS2YJ3AM vs PS-2YJ3AM)
+    // Fallback: strip dashes from input and match against stored codes
+    // (handles PS2YJ3AM vs PS-2YJ3AM entered without dash)
     const alphaOnly = normalized.replace(/[^A-Z0-9]/g, '');
-    r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE REPLACE(code, "-", "") = ?', args: [alphaOnly] });
-    return r.rows[0] || null;
+    const suffix = alphaOnly.startsWith('PS') ? alphaOnly.slice(2) : alphaOnly;
+    r = await getDb().execute({ sql: "SELECT * FROM AccessCode WHERE code LIKE ?", args: [`%${suffix}%`] });
+    // Find exact alphanumeric match
+    const match = r.rows.find(row => {
+      const stored = String(row.code).toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return stored === alphaOnly;
+    });
+    return match || null;
   }
   return null;
 }
