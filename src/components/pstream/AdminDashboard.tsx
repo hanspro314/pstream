@@ -10,6 +10,7 @@ import {
   RotateCcw, Play, Download, Clock, TrendingUp,
   Plus, Shield, Smartphone, ChevronLeft, ChevronRight,
   Lock, ArrowLeft, RotateCcw as ResetDevice,
+  Monitor, Globe, ScreenShare, Calendar, Tag,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import type { AppView } from '@/lib/types';
@@ -52,6 +53,39 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+function parseDeviceInfo(infoJson: string | null): { platform: string; browser: string; screen: string; language: string; timezone: string; raw: string } {
+  if (!infoJson) return { platform: '—', browser: '—', screen: '—', language: '—', timezone: '—', raw: '' };
+  try {
+    const info = typeof infoJson === 'string' ? JSON.parse(infoJson) : infoJson;
+    const platform = info.platform || info.os || '—';
+    const browser = info.userAgent
+      ? (info.userAgent.includes('Chrome') && !info.userAgent.includes('Edg') ? 'Chrome' :
+         info.userAgent.includes('Firefox') ? 'Firefox' :
+         info.userAgent.includes('Safari') && !info.userAgent.includes('Chrome') ? 'Safari' :
+         info.userAgent.includes('Edg') ? 'Edge' :
+         info.userAgent.includes('Opera') ? 'Opera' :
+         info.userAgent.split(' ').slice(-1)[0]?.split('/')[0] || 'Unknown')
+      : '—';
+    const screenWidth = info.screenWidth || '?';
+    const screenHeight = info.screenHeight || '?';
+    const screen = `${screenWidth}x${screenHeight}`;
+    const language = info.language || '—';
+    const timezone = info.timezone || '—';
+    return { platform, browser, screen, language, timezone, raw: infoJson };
+  } catch {
+    return { platform: infoJson, browser: '—', screen: '—', language: '—', timezone: '—', raw: infoJson };
+  }
+}
+
+function getPlatformIcon(platform: string) {
+  const p = platform.toLowerCase();
+  if (p.includes('android') || p.includes('linux') && !p.includes('ubuntu')) return '🤖';
+  if (p.includes('iphone') || p.includes('ipad') || p.includes('ios') || p.includes('mac')) return '🍎';
+  if (p.includes('windows')) return '🪟';
+  if (p.includes('linux')) return '🐧';
+  return '📱';
 }
 
 export default function AdminDashboard() {
@@ -379,27 +413,32 @@ function AdminDashboardContent() {
 
     return (
       <div className="space-y-4">
-        {/* Filters */}
-        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-          {statusFilters.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => {
-                setTokenStatusFilter(value);
-                loadTokens(1, value || undefined);
-              }}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                tokenStatusFilter === value
-                  ? 'bg-[#E50914] text-white'
-                  : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        {/* Filters + Count */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex gap-2 overflow-x-auto pb-1 flex-1" style={{ scrollbarWidth: 'none' }}>
+            {statusFilters.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setTokenStatusFilter(value);
+                  loadTokens(1, value || undefined);
+                }}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  tokenStatusFilter === value
+                    ? 'bg-[#E50914] text-white'
+                    : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {!isLoadingTokens && tokens.length > 0 && (
+            <span className="text-white/30 text-xs flex-shrink-0">{tokensTotal} total</span>
+          )}
         </div>
 
-        {/* Token Table */}
+        {/* Loading */}
         {isLoadingTokens ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-8 h-8 text-[#E50914] animate-spin" />
@@ -411,130 +450,204 @@ function AdminDashboardContent() {
           </div>
         ) : (
           <>
-            <div className="bg-[#1A1A1A] rounded-xl overflow-hidden border border-white/5">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/5">
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Code</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Tier</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3">Status</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden md:table-cell">Note</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden sm:table-cell">Created</th>
-                      <th className="text-left text-white/40 text-xs font-medium px-4 py-3 hidden lg:table-cell">Device</th>
-                      <th className="text-right text-white/40 text-xs font-medium px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tokens.map((token) => (
-                      <tr key={token.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className="text-white text-sm font-mono font-medium">{token.code}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] px-1.5 py-0 ${
-                              token.tier === 'download'
-                                ? 'border-purple-500/50 text-purple-400'
-                                : token.tier === 'trial'
-                                  ? 'border-yellow-500/50 text-yellow-400'
-                                  : 'border-[#E50914]/50 text-[#E50914]'
-                            }`}
-                          >
-                            {token.tier}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1 text-xs ${
-                            token.status === 'active' ? 'text-green-400' :
-                            token.status === 'available' ? 'text-blue-400' :
-                            token.status === 'expired' ? 'text-orange-400' :
-                            'text-red-400'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              token.status === 'active' ? 'bg-green-400' :
-                              token.status === 'available' ? 'bg-blue-400' :
-                              token.status === 'expired' ? 'bg-orange-400' :
-                              'bg-red-400'
-                            }`} />
-                            {token.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-white/40 text-xs hidden md:table-cell max-w-[120px] truncate">
-                          {token.note || '—'}
-                        </td>
-                        <td className="px-4 py-3 text-white/40 text-xs hidden sm:table-cell">
-                          {formatDate(token.createdAt)}
-                        </td>
-                        <td className="px-4 py-3 text-white/30 text-[10px] hidden lg:table-cell max-w-[100px] truncate">
-                          {token.redeemedDeviceInfo || '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1 justify-end">
-                            {token.status === 'active' && (
-                              <>
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      await fetch('/api/admin/tokens/' + token.code, {
-                                        method: 'PATCH',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ action: 'reset_device' }),
-                                      });
-                                      setSuccess('Device lock reset — user can re-activate on new device');
-                                      loadTokens(tokensPage, tokenStatusFilter || undefined);
-                                      loadStats();
-                                    } catch (err) {
-                                      setError(err instanceof Error ? err.message : 'Failed to reset device');
-                                    }
-                                  }}
-                                  className="p-1.5 hover:bg-blue-500/10 rounded-lg transition-colors"
-                                  title="Reset device lock"
-                                >
-                                  <ResetDevice className="w-3.5 h-3.5 text-blue-400" />
-                                </button>
-                                <button
-                                  onClick={() => handleTokenAction(token.code, 'revoke', 'Admin revoked')}
-                                  className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
-                                  title="Revoke"
-                                >
-                                  <Ban className="w-3.5 h-3.5 text-red-400" />
-                                </button>
-                              </>
-                            )}
-                            {token.status === 'revoked' && (
-                              <button
-                                onClick={() => handleTokenAction(token.code, 'reactivate')}
-                                className="p-1.5 hover:bg-green-500/10 rounded-lg transition-colors"
-                                title="Reactivate"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5 text-green-400" />
-                              </button>
-                            )}
-                            {token.status === 'available' && (
-                              <button
-                                onClick={() => handleTokenAction(token.code, 'revoke', 'Cancelled by admin')}
-                                className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
-                                title="Revoke"
-                              >
-                                <Ban className="w-3.5 h-3.5 text-red-400" />
-                              </button>
-                            )}
+            {/* Token Cards - Mobile-first responsive layout */}
+            <div className="space-y-3">
+              {tokens.map((token) => {
+                const device = parseDeviceInfo(token.redeemedDeviceInfo);
+                const hasDevice = token.status === 'active' || token.redeemedDeviceInfo;
+                const statusColor = token.status === 'active' ? 'green' : token.status === 'available' ? 'blue' : token.status === 'expired' ? 'orange' : 'red';
+                const tierColor = token.tier === 'download' ? 'purple' : token.tier === 'trial' ? 'yellow' : 'red';
+
+                return (
+                  <motion.div
+                    key={token.id}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-[#1A1A1A] rounded-xl border border-white/5 overflow-hidden"
+                  >
+                    {/* Card Header - Code, Tier, Status */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-white text-sm font-mono font-bold tracking-wide">{token.code}</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0 flex-shrink-0 ${
+                            tierColor === 'purple' ? 'border-purple-500/50 text-purple-400' :
+                            tierColor === 'yellow' ? 'border-yellow-500/50 text-yellow-400' :
+                            'border-[#E50914]/50 text-[#E50914]'
+                          }`}
+                        >
+                          {token.tier === 'download' ? 'Stream + DL' : token.tier === 'trial' ? 'Trial' : 'Stream'}
+                        </Badge>
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium flex-shrink-0 ${
+                        statusColor === 'green' ? 'text-green-400' :
+                        statusColor === 'blue' ? 'text-blue-400' :
+                        statusColor === 'orange' ? 'text-orange-400' :
+                        'text-red-400'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          statusColor === 'green' ? 'bg-green-400' :
+                          statusColor === 'blue' ? 'bg-blue-400' :
+                          statusColor === 'orange' ? 'bg-orange-400' :
+                          'bg-red-400'
+                        }`} />
+                        {token.status.charAt(0).toUpperCase() + token.status.slice(1)}
+                      </span>
+                    </div>
+
+                    {/* Card Body - Details Grid */}
+                    <div className="px-4 py-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2.5">
+                        {/* Note */}
+                        <div className="flex items-start gap-2 col-span-2 sm:col-span-1">
+                          <Tag className="w-3.5 h-3.5 text-white/25 mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-white/25 text-[10px] uppercase tracking-wider">Note</p>
+                            <p className="text-white/70 text-xs font-medium truncate">{token.note || 'No note'}</p>
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+
+                        {/* Created */}
+                        <div className="flex items-start gap-2">
+                          <Calendar className="w-3.5 h-3.5 text-white/25 mt-0.5 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-white/25 text-[10px] uppercase tracking-wider">Created</p>
+                            <p className="text-white/70 text-xs font-medium">{formatDate(token.createdAt)}</p>
+                          </div>
+                        </div>
+
+                        {/* Expires */}
+                        {token.expiresAt && (
+                          <div className="flex items-start gap-2">
+                            <Clock className="w-3.5 h-3.5 text-white/25 mt-0.5 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-white/25 text-[10px] uppercase tracking-wider">Expires</p>
+                              <p className="text-white/70 text-xs font-medium">{formatDate(token.expiresAt)}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Device Info Section - Only shown when device data exists */}
+                      {hasDevice && (
+                        <div className="mt-3 pt-3 border-t border-white/5">
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <Smartphone className="w-3.5 h-3.5 text-white/30" />
+                            <p className="text-white/30 text-[10px] uppercase tracking-wider font-semibold">Device Info</p>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+                            {/* Platform */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm flex-shrink-0" title={device.platform}>{getPlatformIcon(device.platform)}</span>
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Platform</p>
+                                <p className="text-white/70 text-xs font-medium truncate">{device.platform}</p>
+                              </div>
+                            </div>
+
+                            {/* Browser */}
+                            <div className="flex items-center gap-2">
+                              <Globe className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Browser</p>
+                                <p className="text-white/70 text-xs font-medium truncate">{device.browser}</p>
+                              </div>
+                            </div>
+
+                            {/* Screen */}
+                            <div className="flex items-center gap-2">
+                              <Monitor className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Screen</p>
+                                <p className="text-white/70 text-xs font-medium">{device.screen}</p>
+                              </div>
+                            </div>
+
+                            {/* Timezone */}
+                            <div className="flex items-center gap-2">
+                              <ScreenShare className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Timezone</p>
+                                <p className="text-white/70 text-xs font-medium truncate">{device.timezone}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Footer - Actions */}
+                    <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-white/5 bg-white/[0.02]">
+                      {token.status === 'active' && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              try {
+                                await fetch('/api/admin/tokens/' + token.code, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'reset_device' }),
+                                });
+                                setSuccess('Device lock reset');
+                                loadTokens(tokensPage, tokenStatusFilter || undefined);
+                                loadStats();
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : 'Failed to reset device');
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
+                          >
+                            <ResetDevice className="w-3.5 h-3.5" />
+                            Reset Device
+                          </button>
+                          <button
+                            onClick={() => handleTokenAction(token.code, 'revoke', 'Admin revoked')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+                          >
+                            <Ban className="w-3.5 h-3.5" />
+                            Revoke
+                          </button>
+                        </>
+                      )}
+                      {token.status === 'revoked' && (
+                        <button
+                          onClick={() => handleTokenAction(token.code, 'reactivate')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-green-400 hover:bg-green-500/10 transition-colors"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Reactivate
+                        </button>
+                      )}
+                      {token.status === 'available' && (
+                        <button
+                          onClick={() => handleTokenAction(token.code, 'revoke', 'Cancelled by admin')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Revoke
+                        </button>
+                      )}
+                      {token.status === 'expired' && (
+                        <button
+                          onClick={() => handleTokenAction(token.code, 'reactivate')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-green-400 hover:bg-green-500/10 transition-colors"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Reactivate
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
 
             {/* Pagination */}
             {tokensTotal > 20 && (
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pt-2">
                 <p className="text-white/30 text-xs">
-                  Showing {((tokensPage - 1) * 20) + 1}–{Math.min(tokensPage * 20, tokensTotal)} of {tokensTotal}
+                  {((tokensPage - 1) * 20) + 1}–{Math.min(tokensPage * 20, tokensTotal)} of {tokensTotal}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
