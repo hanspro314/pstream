@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,77 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
+model AdminConfig {
+  id          String   @id @default("main")
+
+  // Branding
+  siteName    String   @default("PStream")
+  whatsapp    String   @default("0742337382")
+  currency    String   @default("UGX")
+
+  // Pricing
+  streamPrice       Int    @default(2000)
+  downloadPrice     Int    @default(3500)
+  planDurationDays  Int    @default(14)
+
+  // Trial settings
+  trialEnabled         Boolean @default(true)
+  trialDurationHours   Int    @default(1)
+
+  // Download settings
+  maxDownloadsPerPeriod Int   @default(0) // 0 = unlimited
+
+  // Token format
+  tokenPrefix     String   @default("PS-")
+  tokenLength     Int      @default(6)
+
+  // Revocation policy
+  defaultRefundPolicy   String @default("none") // "none" | "partial" | "full"
+  defaultRefundPercent  Int    @default(0)
+
+  // Device policy
+  allowDeviceTransfer   Boolean @default(false)
+  maxDevicesPerToken    Int     @default(1)
+
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+model AccessCode {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  code      String   @unique  // e.g. "PS-A3K7X9"
+  tier      String               // "stream" | "download" | "trial"
+  status    String   @default("available") // "available" | "active" | "expired" | "revoked"
+
+  // Snapshot of admin config at time of creation (so config changes don't affect existing tokens)
+  planDurationDays     Int
+  maxDownloads         Int
+  pricePaid            Int     @default(0)
+
+  // Redemption info
+  redeemedAt           DateTime?
+  expiresAt            DateTime?
+  redeemedByDeviceId   String?
+  redeemedDeviceInfo   String?  // JSON with device details
+
+  // Revocation
+  revokedAt            DateTime?
+  revokeReason         String?
+  refunded             Boolean  @default(false)
+  refundAmount         Int      @default(0)
+
+  // Admin metadata
+  note                 String?  // Admin's note (e.g. "For John from Makerere")
+  createdAt            DateTime @default(now())
+
+  devices Device[]
+}
+
+model Device {
+  id              String   @id @default(cuid())
+  fingerprint     String   @unique  // Hashed device signature
+  deviceInfo      String               // JSON with browser, OS, screen details
+  firstSeenAt     DateTime @default(now())
+  lastActiveAt    DateTime @default(now())
+
+  codes           AccessCode[]
 }
