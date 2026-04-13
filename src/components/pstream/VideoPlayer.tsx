@@ -165,6 +165,7 @@ export default function VideoPlayer({
   const skipAutoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number }>({ time: 0, x: 0 });
+  const wasTouchRef = useRef(false);
   const statsTapRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
 
   const { state, dispatch } = useAppStore();
@@ -419,8 +420,9 @@ export default function VideoPlayer({
     if (skipAutoHideRef.current) clearTimeout(skipAutoHideRef.current);
   }, []);
 
-  // ─── Double-Tap Seek Handlers ───────────────────────────────
+  // ─── Touch Handlers ──────────────────────────────────────
   const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    wasTouchRef.current = true;
     const now = Date.now();
     const touch = e.touches[0];
     const rect = containerRef.current?.getBoundingClientRect();
@@ -441,6 +443,11 @@ export default function VideoPlayer({
       lastTapRef.current = { time: now, x };
     }
   }, [seek]);
+
+  const handleTouchEnd = useCallback(() => {
+    // Reset the touch flag after a short delay so synthetic mouse events are ignored
+    setTimeout(() => { wasTouchRef.current = false; }, 400);
+  }, []);
 
   // ─── Stats Toggle (7 taps or 'S' key) ──────────────────────
   const handleStatsTap = useCallback(() => {
@@ -652,8 +659,17 @@ export default function VideoPlayer({
             if (isPlaying) resetControlsTimeout();
           }}
           onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
           onClick={(e) => {
-            // Only toggle play if not clicking on controls or settings
+            // If this click came from a touch (mobile), show/hide controls instead of toggling play
+            if (wasTouchRef.current) {
+              // Only toggle controls if not clicking on a control button
+              if ((e.target as HTMLElement).closest('[data-controls]') || showSettingsMenu) return;
+              setShowControls(prev => !prev);
+              if (!showControls) resetControlsTimeout();
+              return;
+            }
+            // Desktop: only toggle play if not clicking on controls or settings
             if ((e.target as HTMLElement).closest('[data-controls]') || showSettingsMenu) return;
             togglePlay();
           }}

@@ -27,13 +27,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (accessCode.status === 'active' && accessCode.redeemedByDeviceId) {
-      const device = await findDevice({ fingerprint });
-      if (device && device.id === accessCode.redeemedByDeviceId) {
+      // Device lock check: compare fingerprint directly (device.id is null in libsql raw queries)
+      if (fingerprint === String(accessCode.redeemedByDeviceId)) {
         const now = new Date();
         if (accessCode.expiresAt && new Date(String(accessCode.expiresAt)) < now) {
           await updateAccessCode({ code: accessCode.code }, { status: 'expired' });
           return NextResponse.json({ success: false, error: 'This code has expired' }, { status: 410 });
         }
+        // Update device lastActiveAt
+        await upsertDevice(fingerprint,
+          { lastActiveAt: new Date().toISOString(), deviceInfo: deviceInfo ? JSON.stringify(deviceInfo) : undefined },
+          {}
+        );
         return NextResponse.json({
           success: true,
           data: {
@@ -63,11 +68,12 @@ export async function POST(request: NextRequest) {
       expiresAt.setDate(expiresAt.getDate() + (Number(accessCode.planDurationDays) || 14));
     }
 
+    // Store fingerprint as redeemedByDeviceId (not device.id which is null in libsql)
     const updatedCode = await updateAccessCode({ code: accessCode.code }, {
       status: 'active',
       redeemedAt: new Date().toISOString(),
       expiresAt: expiresAt.toISOString(),
-      redeemedByDeviceId: device.id,
+      redeemedByDeviceId: fingerprint,
       redeemedDeviceInfo: deviceInfo ? JSON.stringify(deviceInfo) : null,
     });
 

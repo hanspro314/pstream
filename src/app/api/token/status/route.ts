@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccessCode, updateAccessCode, findDevice } from '@/lib/db';
+import { findAccessCode, updateAccessCode } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (accessCode.redeemedByDeviceId) {
-      const device = await findDevice({ fingerprint });
-      if (!device || device.id !== accessCode.redeemedByDeviceId) {
+      // Compare fingerprint directly (device.id is null in libsql raw queries)
+      if (fingerprint !== String(accessCode.redeemedByDeviceId)) {
         return NextResponse.json({ success: true, data: { valid: false, reason: 'device_mismatch' } });
       }
     }
