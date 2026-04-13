@@ -118,16 +118,22 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
+    let sql: string;
     if (status === 'available') {
-      const result = await getDb().execute({ sql: "DELETE FROM AccessCode WHERE status = 'available'" });
-      return NextResponse.json({ success: true, deleted: result.rowsAffected });
-    }
-    if (status === 'all') {
-      const result = await getDb().execute({ sql: 'DELETE FROM AccessCode' });
-      return NextResponse.json({ success: true, deleted: result.rowsAffected });
+      sql = "DELETE FROM AccessCode WHERE status = 'available'";
+    } else if (status === 'all') {
+      sql = 'DELETE FROM AccessCode';
+    } else {
+      return NextResponse.json({ success: false, error: 'Specify ?status=available or ?status=all' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: false, error: 'Specify ?status=available or ?status=all' }, { status: 400 });
+    // Verify count before delete
+    const before = await countAccessCodes({});
+    await getDb().execute({ sql });
+    const after = await countAccessCodes({});
+    const deleted = before - after;
+
+    return NextResponse.json({ success: true, deleted });
   } catch (error) {
     console.error('Admin tokens DELETE error:', error);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
