@@ -242,6 +242,22 @@ export async function updateAccessCode(where: { id?: string; code?: string }, da
   return null;
 }
 
+export async function deleteAccessCode(code: string) {
+  await getDb().execute({ sql: 'DELETE FROM AccessCode WHERE code = ?', args: [code] });
+  return true;
+}
+
+export async function deleteManyAccessCodes(where?: { status?: string }) {
+  let sql = 'DELETE FROM AccessCode';
+  const args: unknown[] = [];
+  if (where?.status) {
+    sql += ' WHERE status = ?';
+    args.push(where.status);
+  }
+  await getDb().execute({ sql, args });
+  return true;
+}
+
 /* ─── Device ─── */
 
 export async function findDevice(where: { fingerprint: string }) {

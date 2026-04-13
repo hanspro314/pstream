@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findAccessCode, updateAccessCode, getAdminConfig, getDb } from '@/lib/db';
+import { findAccessCode, updateAccessCode, getAdminConfig, deleteAccessCode } from '@/lib/db';
 
 export async function DELETE(
   request: NextRequest,
@@ -11,7 +11,7 @@ export async function DELETE(
     if (!token) {
       return NextResponse.json({ success: false, error: 'Token not found' }, { status: 404 });
     }
-    await getDb().execute({ sql: 'DELETE FROM AccessCode WHERE code = ?', args: [id] });
+    await deleteAccessCode(id);
     return NextResponse.json({ success: true, message: 'Token deleted' });
   } catch (error) {
     console.error('Admin token DELETE error:', error);
