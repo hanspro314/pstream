@@ -1215,7 +1215,8 @@ export default function VideoPlayer({
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute bottom-full right-0 mb-2 w-56 bg-[#1A1A1A] border border-white/10 rounded-lg shadow-2xl z-50 max-h-[55vh] overflow-y-auto custom-scrollbar"
+                          className="absolute bottom-full right-0 mb-2 w-56 bg-[#1A1A1A] border border-white/10 rounded-lg shadow-2xl z-50 custom-scrollbar"
+                          style={{ maxHeight: '55vh', overflowY: 'auto' }}
                         >
                           {/* Quality Section */}
                           <div className="p-3 border-b border-white/10">
