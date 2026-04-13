@@ -17,11 +17,19 @@ function createPrismaClient(): PrismaClient {
       ...(authToken ? { authToken } : {}),
     });
     const adapter = new PrismaLibSQL(libsql);
-    return new PrismaClient({ adapter });
+
+    // Explicitly pass datasources URL — Prisma's bundled engine cannot
+    // read process.env.DATABASE_URL on Vercel, so we force-feed it here.
+    return new PrismaClient({
+      adapter,
+      datasources: { db: { url: dbUrl } },
+    });
   }
 
   // Local SQLite file — use default Prisma SQLite engine
-  return new PrismaClient();
+  return new PrismaClient({
+    datasources: { db: { url: dbUrl } },
+  });
 }
 
 export const prisma = globalForPrisma.prisma || createPrismaClient();
