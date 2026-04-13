@@ -1,17 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-
-const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded I, O, 0, 1 to avoid confusion
-
-function generateRandomCode(prefix: string, length: number): string {
-  const array = new Uint32Array(length);
-  crypto.getRandomValues(array);
-  let code = prefix;
-  for (let i = 0; i < length; i++) {
-    code += ALPHANUMERIC[array[i] % ALPHANUMERIC.length];
-  }
-  return code;
-}
+import { NextResponse } from 'next/server';
+import { findManyAccessCodes, countAccessCodes, getAdminConfig, findAccessCode, createManyAccessCodes } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,16 +9,11 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 20));
     const skip = (page - 1) * limit;
 
-    const where = status && status !== 'all' ? { status } : {};
+    const where: Record<string, unknown> = status && status !== 'all' ? { status } : {};
 
     const [tokens, total] = await Promise.all([
-      prisma.accessCode.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.accessCode.count({ where }),
+      findManyAccessCodes({ where, orderBy: 'createdAt DESC', skip, take: limit }),
+      countAccessCodes(where),
     ]);
 
     return NextResponse.json({
@@ -51,7 +34,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { count = 1, tier, note } = body;
 
-    // Validate tier
     if (!tier || !['stream', 'download', 'trial'].includes(tier)) {
       return NextResponse.json(
         { success: false, error: 'Invalid tier. Must be "stream", "download", or "trial"' },
@@ -59,48 +41,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate count
     const numCount = Math.min(100, Math.max(1, Number(count) || 1));
 
-    // Get admin config for settings
-    let config = await prisma.adminConfig.findUnique({ where: { id: 'main' } });
+    let config = await getAdminConfig();
     if (!config) {
-      config = await prisma.adminConfig.create({ data: { id: 'main' } });
+      config = await (await import('@/lib/db')).createDefaultConfig();
     }
 
-    // Determine plan settings based on tier
-    let planDurationDays = config.planDurationDays;
-    let maxDownloads = config.maxDownloadsPerPeriod;
+    let planDurationDays = Number(config.planDurationDays) || 14;
+    let maxDownloads = Number(config.maxDownloadsPerPeriod) || 0;
     let pricePaid = 0;
 
     if (tier === 'trial') {
-      // Trial uses hours, but we store a fraction of a day
-      planDurationDays = Math.ceil((config.trialDurationHours ?? 1) / 24);
+      planDurationDays = Math.ceil((Number(config.trialDurationHours) || 1) / 24);
       maxDownloads = 0;
       pricePaid = 0;
     } else if (tier === 'stream') {
-      pricePaid = config.streamPrice;
-      maxDownloads = 0; // No downloads for stream tier
+      pricePaid = Number(config.streamPrice) || 2000;
+      maxDownloads = 0;
     } else if (tier === 'download') {
-      pricePaid = config.downloadPrice;
-      maxDownloads = config.maxDownloadsPerPeriod;
+      pricePaid = Number(config.downloadPrice) || 3500;
+      maxDownloads = Number(config.maxDownloadsPerPeriod) || 0;
     }
 
-    // Generate unique codes
-    const codes: string[] = [];
+    const tokenPrefix = String(config.tokenPrefix || 'PS-');
+    const tokenLength = Number(config.tokenLength) || 6;
+    const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const codes: { code: string; tier: string; planDurationDays: number; maxDownloads: number; pricePaid: number; note: string | null }[] = [];
     const existingCodes = new Set<string>();
     let attempts = 0;
     const maxAttempts = numCount * 10;
 
     while (codes.length < numCount && attempts < maxAttempts) {
       attempts++;
-      const code = generateRandomCode(config.tokenPrefix, config.tokenLength);
+      let code = tokenPrefix;
+      for (let i = 0; i < tokenLength; i++) {
+        code += ALPHANUMERIC[Math.floor(Math.random() * ALPHANUMERIC.length)];
+      }
       if (!existingCodes.has(code)) {
         existingCodes.add(code);
-        // Check DB for uniqueness
-        const exists = await prisma.accessCode.findUnique({ where: { code } });
+        const exists = await findAccessCode({ code });
         if (!exists) {
-          codes.push(code);
+          codes.push({ code, tier, planDurationDays, maxDownloads, pricePaid, note: note || null });
         }
       }
     }
@@ -112,31 +94,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create all access codes
-    const created = await prisma.accessCode.createMany({
-      data: codes.map((code) => ({
-        code,
-        tier,
-        status: 'available',
-        planDurationDays,
-        maxDownloads,
-        pricePaid,
-        note: note || null,
-      })),
-    });
-
-    // Fetch the created codes for the response
-    const createdCodes = await prisma.accessCode.findMany({
-      where: { code: { in: codes } },
-      orderBy: { createdAt: 'desc' },
+    const created = await createManyAccessCodes(codes);
+    const createdCodes = await findManyAccessCodes({
+      where: { code: { in: codes.map(c => c.code) } },
+      orderBy: 'createdAt DESC',
     });
 
     return NextResponse.json({
       success: true,
-      data: {
-        codes: createdCodes,
-        count: created.count,
-      },
+      data: { codes: createdCodes, count: created.count },
     });
   } catch (error) {
     console.error('Admin tokens POST error:', error);

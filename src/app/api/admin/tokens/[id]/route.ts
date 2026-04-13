@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { findAccessCode, updateAccessCode, getAdminConfig } from '@/lib/db';
 
 export async function PATCH(
   request: NextRequest,
@@ -17,8 +17,7 @@ export async function PATCH(
       );
     }
 
-    // Find the token
-    const token = await prisma.accessCode.findUnique({ where: { id } });
+    const token = await findAccessCode({ id });
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'Token not found' },
@@ -32,38 +31,30 @@ export async function PATCH(
       case 'revoke': {
         updateData = {
           status: 'revoked',
-          revokedAt: new Date(),
+          revokedAt: new Date().toISOString(),
           revokeReason: reason || null,
         };
-
-        // Handle refund
-        if (token.pricePaid > 0) {
-          const config = await prisma.adminConfig.findUnique({ where: { id: 'main' } });
+        if (Number(token.pricePaid) > 0) {
+          const config = await getAdminConfig();
           const policy = refundPolicy || config?.defaultRefundPolicy || 'none';
-
           if (policy === 'full') {
-            updateData.refunded = true;
-            updateData.refundAmount = token.pricePaid;
+            updateData.refunded = 1;
+            updateData.refundAmount = Number(token.pricePaid);
           } else if (policy === 'partial') {
-            const percent = config?.defaultRefundPercent || 50;
-            updateData.refunded = true;
-            updateData.refundAmount = Math.floor(token.pricePaid * percent / 100);
-          } else if (refundAmount !== undefined && refundAmount > 0) {
-            updateData.refunded = true;
+            const percent = Number(config?.defaultRefundPercent) || 50;
+            updateData.refunded = 1;
+            updateData.refundAmount = Math.floor(Number(token.pricePaid) * percent / 100);
+          } else if (refundAmount !== undefined && Number(refundAmount) > 0) {
+            updateData.refunded = 1;
             updateData.refundAmount = Number(refundAmount);
           }
         }
         break;
       }
-
       case 'expire': {
-        updateData = {
-          status: 'expired',
-          expiresAt: new Date(),
-        };
+        updateData = { status: 'expired', expiresAt: new Date().toISOString() };
         break;
       }
-
       case 'reactivate': {
         if (token.status !== 'revoked' && token.status !== 'expired') {
           return NextResponse.json(
@@ -71,16 +62,16 @@ export async function PATCH(
             { status: 400 }
           );
         }
+        const days = Number(token.planDurationDays) || 14;
+        const newExpiry = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
         updateData = {
           status: 'active',
           revokedAt: null,
           revokeReason: null,
-          // Restore expiration from plan duration
-          expiresAt: new Date(Date.now() + token.planDurationDays * 24 * 60 * 60 * 1000),
+          expiresAt: newExpiry.toISOString(),
         };
         break;
       }
-
       case 'reset_device': {
         if (token.status !== 'active') {
           return NextResponse.json(
@@ -88,7 +79,6 @@ export async function PATCH(
             { status: 400 }
           );
         }
-        // Clear the device lock so the user can re-activate on a new device
         updateData = {
           status: 'available',
           redeemedAt: null,
@@ -100,11 +90,7 @@ export async function PATCH(
       }
     }
 
-    const updated = await prisma.accessCode.update({
-      where: { id },
-      data: updateData,
-    });
-
+    const updated = await updateAccessCode(id, updateData);
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     console.error('Admin token PATCH error:', error);
