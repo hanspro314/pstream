@@ -10,9 +10,9 @@ export async function PATCH(
     const body = await request.json();
     const { action, reason, refundAmount, refundPolicy } = body;
 
-    if (!action || !['revoke', 'expire', 'reactivate'].includes(action)) {
+    if (!action || !['revoke', 'expire', 'reactivate', 'reset_device'].includes(action)) {
       return NextResponse.json(
-        { success: false, error: 'Invalid action. Must be "revoke", "expire", or "reactivate"' },
+        { success: false, error: 'Invalid action. Must be "revoke", "expire", "reactivate", or "reset_device"' },
         { status: 400 }
       );
     }
@@ -77,6 +77,24 @@ export async function PATCH(
           revokeReason: null,
           // Restore expiration from plan duration
           expiresAt: new Date(Date.now() + token.planDurationDays * 24 * 60 * 60 * 1000),
+        };
+        break;
+      }
+
+      case 'reset_device': {
+        if (token.status !== 'active') {
+          return NextResponse.json(
+            { success: false, error: 'Only active tokens can have their device reset' },
+            { status: 400 }
+          );
+        }
+        // Clear the device lock so the user can re-activate on a new device
+        updateData = {
+          status: 'available',
+          redeemedAt: null,
+          redeemedByDeviceId: null,
+          redeemedDeviceInfo: null,
+          expiresAt: null,
         };
         break;
       }

@@ -1,4 +1,4 @@
-/* PStream Admin Dashboard — Real data from API */
+/* PStream Admin Dashboard — PIN-gated, real data from API */
 
 'use client';
 
@@ -9,8 +9,10 @@ import {
   Copy, Check, X, Loader2, AlertCircle, Ban,
   RotateCcw, Play, Download, Clock, TrendingUp,
   Plus, Shield, Smartphone, ChevronLeft, ChevronRight,
+  Lock, ArrowLeft, RotateCcw as ResetDevice,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import type { AppView } from '@/lib/types';
 import {
   fetchAdminStats, fetchAdminTokens, generateTokens,
   manageToken, fetchAdminConfig, updateAdminConfig,
@@ -53,6 +55,108 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function AdminDashboard() {
+  const { state, navigate } = useAppStore();
+  const [isAdminVerified, setIsAdminVerified] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return sessionStorage.getItem('pstream_admin_verified') === 'true';
+    } catch { return false; }
+  });
+
+  if (!isAdminVerified) {
+    return <AdminPinGate onVerified={() => setIsAdminVerified(true)} navigate={navigate} />;
+  }
+
+  return <AdminDashboardContent />;
+}
+
+// ─── PIN Gate Component ────────────────────────────────────
+function AdminPinGate({ onVerified, navigate }: { onVerified: () => void; navigate: (v: AppView) => void }) {
+  const [adminPin, setAdminPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+
+  const handlePinSubmit = async () => {
+    if (!adminPin.trim()) return;
+    setPinLoading(true);
+    setPinError('');
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: adminPin.trim() }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        sessionStorage.setItem('pstream_admin_verified', 'true');
+        onVerified();
+      } else {
+        setPinError(json.error || 'Incorrect PIN');
+      }
+    } catch {
+      setPinError('Failed to verify PIN');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="pt-20 px-4 md:px-12 pb-24 md:pb-8 min-h-screen flex items-center justify-center"
+    >
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#E50914]/10 border border-[#E50914]/20 flex items-center justify-center">
+            <Lock className="w-8 h-8 text-[#E50914]" />
+          </div>
+          <h1 className="text-white text-xl font-bold">Admin Access</h1>
+          <p className="text-white/50 text-sm mt-1">Enter your admin PIN to continue</p>
+        </div>
+
+        <div className="bg-[#141414] rounded-2xl p-6 border border-white/5">
+          {pinError && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <p className="text-sm text-red-400">{pinError}</p>
+            </div>
+          )}
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={10}
+            placeholder="Enter PIN"
+            value={adminPin}
+            onChange={(e) => { setAdminPin(e.target.value); if (pinError) setPinError(''); }}
+            onKeyDown={(e) => e.key === 'Enter' && handlePinSubmit()}
+            className="w-full h-14 bg-white/5 border-white/10 text-white text-center text-xl font-mono tracking-widest rounded-xl placeholder:text-white/25 focus:outline-none focus:border-[#E50914] transition-all"
+            autoFocus
+          />
+          <button
+            onClick={handlePinSubmit}
+            disabled={pinLoading || !adminPin.trim()}
+            className="w-full mt-4 h-12 bg-[#E50914] hover:bg-[#E50914]/90 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {pinLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Lock className="w-4 h-4" />}
+            {pinLoading ? 'Verifying...' : 'Unlock Dashboard'}
+          </button>
+        </div>
+
+        <button
+          onClick={() => navigate('home')}
+          className="w-full mt-6 flex items-center justify-center gap-2 text-sm text-white/40 hover:text-white/60 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Dashboard Content Component ────────────────────────────
+function AdminDashboardContent() {
   const { state } = useAppStore();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -367,13 +471,35 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
                             {token.status === 'active' && (
-                              <button
-                                onClick={() => handleTokenAction(token.id, 'revoke', 'Admin revoked')}
-                                className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
-                                title="Revoke"
-                              >
-                                <Ban className="w-3.5 h-3.5 text-red-400" />
-                              </button>
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      await fetch('/api/admin/tokens/' + token.id, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'reset_device' }),
+                                      });
+                                      setSuccess('Device lock reset — user can re-activate on new device');
+                                      loadTokens(tokensPage, tokenStatusFilter || undefined);
+                                      loadStats();
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err.message : 'Failed to reset device');
+                                    }
+                                  }}
+                                  className="p-1.5 hover:bg-blue-500/10 rounded-lg transition-colors"
+                                  title="Reset device lock"
+                                >
+                                  <ResetDevice className="w-3.5 h-3.5 text-blue-400" />
+                                </button>
+                                <button
+                                  onClick={() => handleTokenAction(token.id, 'revoke', 'Admin revoked')}
+                                  className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
+                                  title="Revoke"
+                                >
+                                  <Ban className="w-3.5 h-3.5 text-red-400" />
+                                </button>
+                              </>
                             )}
                             {token.status === 'revoked' && (
                               <button
