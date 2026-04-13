@@ -1,7 +1,9 @@
-/* PStream Database Client — supports local SQLite and Turso (cloud libsql)
+/* PStream Database Client — Turso via libsql adapter
  *
- * Uses LAZY initialization so Prisma is only created on the first actual
- * API call, never during Next.js build-time page data collection.
+ * CRITICAL: Uses computed property access for env vars to prevent
+ * Turbopack from statically replacing process.env.DATABASE_URL
+ * with 'undefined' during build. This is a known Next.js bundler
+ * issue with @prisma/client's internal runtime.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -12,13 +14,18 @@ type PrismaInstance = PrismaClient;
 
 const globalForPrisma = globalThis as unknown as { _prisma?: PrismaInstance };
 
+/* Read env vars through computed keys so the bundler cannot inline them.
+   Turbopack replaces `process.env.DATABASE_URL` → "undefined" at build
+   time, but it cannot do this with `process.env["DAT" + "ABASE_URL"]`. */
+function getEnv(name: string): string | undefined {
+  return (globalThis as Record<string, unknown>)['process']?.['env']?.[name] as string | undefined;
+}
+
 function createPrismaClient(): PrismaClient {
-  const dbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
+  const dbUrl = getEnv('DATABASE_URL') || 'file:./prisma/dev.db';
 
   if (dbUrl.startsWith('libsql://')) {
-    // Remote Turso — libsql adapter handles ALL connection concerns.
-    // Do NOT pass datasources — it's incompatible with Driver Adapters.
-    const authToken = process.env.TURSO_AUTH_TOKEN;
+    const authToken = getEnv('TURSO_AUTH_TOKEN');
     const libsql: Client = createClient({
       url: dbUrl,
       ...(authToken ? { authToken } : {}),
@@ -27,11 +34,10 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient({ adapter });
   }
 
-  // Local SQLite — Prisma uses its own built-in SQLite engine
   return new PrismaClient();
 }
 
-/* Lazy singleton: created on first access, never at import/module-load time */
+/* Lazy singleton via Proxy — never connects at module-load / build time */
 export const prisma: PrismaInstance = new Proxy({} as PrismaInstance, {
   get(_target, prop, receiver) {
     if (!globalForPrisma._prisma) {
