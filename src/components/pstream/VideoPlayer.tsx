@@ -165,7 +165,6 @@ export default function VideoPlayer({
   const skipAutoHideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapRef = useRef<{ time: number; x: number }>({ time: 0, x: 0 });
-  const wasTouchRef = useRef(false);
   const statsTapRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
 
   const { state, dispatch } = useAppStore();
@@ -420,9 +419,10 @@ export default function VideoPlayer({
     if (skipAutoHideRef.current) clearTimeout(skipAutoHideRef.current);
   }, []);
 
-  // ─── Touch Handlers ──────────────────────────────────────
+  // ─── Double-Tap Seek (mobile) ──────────────────────────
+  // Detects double-tap on left/right halves of the video to seek ±10s.
+  // Single taps are handled by the container onClick below.
   const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    wasTouchRef.current = true;
     const now = Date.now();
     const touch = e.touches[0];
     const rect = containerRef.current?.getBoundingClientRect();
@@ -432,7 +432,7 @@ export default function VideoPlayer({
     const isLeft = x < halfWidth;
 
     if (now - lastTapRef.current.time < 300) {
-      // Double tap detected
+      // Double tap detected — seek
       e.preventDefault();
       const direction = isLeft ? 'left' : 'right';
       setSeekAnimation(direction);
@@ -443,11 +443,6 @@ export default function VideoPlayer({
       lastTapRef.current = { time: now, x };
     }
   }, [seek]);
-
-  const handleTouchEnd = useCallback(() => {
-    // Reset the touch flag after a short delay so synthetic mouse events are ignored
-    setTimeout(() => { wasTouchRef.current = false; }, 400);
-  }, []);
 
   // ─── Stats Toggle (7 taps or 'S' key) ──────────────────────
   const handleStatsTap = useCallback(() => {
@@ -659,19 +654,18 @@ export default function VideoPlayer({
             if (isPlaying) resetControlsTimeout();
           }}
           onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
           onClick={(e) => {
-            // If this click came from a touch (mobile), show/hide controls instead of toggling play
-            if (wasTouchRef.current) {
-              // Only toggle controls if not clicking on a control button
-              if ((e.target as HTMLElement).closest('[data-controls]') || showSettingsMenu) return;
-              setShowControls(prev => !prev);
-              if (!showControls) resetControlsTimeout();
+            // If clicking on any control button, let the button handle it (they all stopPropagation)
+            if ((e.target as HTMLElement).closest('[data-controls]')) return;
+            // If settings menu is open, clicking outside closes it
+            if (showSettingsMenu) {
+              setShowSettingsMenu(false);
               return;
             }
-            // Desktop: only toggle play if not clicking on controls or settings
-            if ((e.target as HTMLElement).closest('[data-controls]') || showSettingsMenu) return;
-            togglePlay();
+            // Netflix/Showmax style: single tap toggles controls visibility
+            // Play/pause is ONLY via the dedicated play/pause buttons
+            setShowControls(prev => !prev);
+            if (isPlaying) resetControlsTimeout();
           }}
         >
           {/* Video element */}
@@ -1221,7 +1215,7 @@ export default function VideoPlayer({
                           exit={{ opacity: 0, y: 8, scale: 0.95 }}
                           transition={{ duration: 0.15 }}
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute bottom-full right-0 mb-2 w-56 bg-[#1A1A1A] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto"
+                          className="absolute bottom-full right-0 mb-2 w-56 bg-[#1A1A1A] border border-white/10 rounded-lg shadow-2xl z-50 max-h-[55vh] overflow-y-auto custom-scrollbar"
                         >
                           {/* Quality Section */}
                           <div className="p-3 border-b border-white/10">

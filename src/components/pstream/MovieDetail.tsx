@@ -314,6 +314,7 @@ export default function MovieDetailPage({
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloadBlocked, setDownloadBlocked] = useState(false);
 
   const inWatchlist = isInWatchlist(movie.id);
   const cast = detail ? generateMockCast(detail) : null;
@@ -391,12 +392,19 @@ export default function MovieDetailPage({
   };
 
   const handleDownload = () => {
+    const canDl = state.tokenSession?.canDownload || state.auth.isAuthenticated;
+    if (!canDl) {
+      // Show upgrade prompt for stream-only users
+      setDownloadBlocked(true);
+      return;
+    }
     const url = detail?.playingUrl || movie.playingurl;
     if (!url) return;
     // Route through our proxy to bypass CDN hotlink protection
     const title = (detail?.video_title || movie.title).replace(/[^a-zA-Z0-9 ]/g, '');
     const filename = title.replace(/ +/g, '_') + '.mp4';
-    const proxyUrl = `/api/stream/video?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(filename)}`;
+    const tokenCode = state.tokenSession?.code || '';
+    const proxyUrl = `/api/stream/video?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(filename)}${tokenCode ? '&token=' + encodeURIComponent(tokenCode) : ''}`;
     // Use a hidden anchor to trigger download
     const a = document.createElement('a');
     a.href = proxyUrl;
@@ -555,10 +563,14 @@ export default function MovieDetailPage({
 
           <button
             onClick={handleDownload}
-            className="flex items-center gap-2 bg-white/10 text-white hover:bg-white/20 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              state.tokenSession?.canDownload || state.auth.isAuthenticated
+                ? 'bg-white/10 text-white hover:bg-white/20'
+                : 'bg-white/5 text-white/40 cursor-not-allowed'
+            }`}
           >
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Download</span>
+            <span className="hidden sm:inline">{state.tokenSession?.canDownload || state.auth.isAuthenticated ? 'Download' : 'Stream Only'}</span>
           </button>
         </motion.div>
 
@@ -755,6 +767,49 @@ export default function MovieDetailPage({
           </motion.div>
         )}
       </div>
+
+      {/* Download Blocked — Upgrade Prompt */}
+      <AnimatePresence>
+        {downloadBlocked && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setDownloadBlocked(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#141414] border border-white/10 rounded-2xl p-6 max-w-sm w-full text-center"
+            >
+              <div className="w-14 h-14 rounded-full bg-[#E50914]/10 flex items-center justify-center mx-auto mb-4">
+                <Download className="w-7 h-7 text-[#E50914]" />
+              </div>
+              <h3 className="text-white text-lg font-semibold mb-2">Download Not Available</h3>
+              <p className="text-white/60 text-sm mb-6">
+                Your current plan only includes streaming. Upgrade to Stream + Download to save movies and watch offline.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setDownloadBlocked(false); navigate('subscribe'); }}
+                  className="flex-1 bg-[#E50914] hover:bg-[#E50914]/90 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+                >
+                  Upgrade
+                </button>
+                <button
+                  onClick={() => setDownloadBlocked(false)}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 rounded-lg text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Review Modal */}
       <AnimatePresence>

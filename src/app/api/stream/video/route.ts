@@ -1,6 +1,7 @@
 /* Video Proxy — streams CDN video to the browser, bypassing hotlink / CORS / referer restrictions */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { findAccessCode } from '@/lib/db';
 
 // Only allow proxying from these CDN domains for security
 const ALLOWED_HOSTS = [
@@ -19,12 +20,36 @@ export async function GET(request: NextRequest) {
   const videoUrl = searchParams.get('url');
   const isDownload = searchParams.get('download') === '1';
   const filename = searchParams.get('filename') || 'pstream-video.mp4';
+  const tokenCode = searchParams.get('token');
 
   if (!videoUrl) {
     return NextResponse.json(
       { success: false, error: 'Missing url parameter' },
       { status: 400 }
     );
+  }
+
+  // Download mode: validate token tier server-side
+  if (isDownload) {
+    if (!tokenCode) {
+      return NextResponse.json(
+        { success: false, error: 'Download requires a valid access token' },
+        { status: 403 }
+      );
+    }
+    const accessCode = await findAccessCode({ code: tokenCode.trim().toUpperCase() });
+    if (!accessCode || accessCode.status !== 'active') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid or expired access token' },
+        { status: 403 }
+      );
+    }
+    if (accessCode.tier !== 'download') {
+      return NextResponse.json(
+        { success: false, error: 'Your plan does not support downloads. Upgrade to Stream + Download.' },
+        { status: 403 }
+      );
+    }
   }
 
   // Validate the URL is from an allowed host

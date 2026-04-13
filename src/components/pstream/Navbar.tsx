@@ -180,6 +180,7 @@ export default function Navbar() {
                   <Baby className="mr-2 h-4 w-4" />
                   Kids Mode
                 </DropdownMenuItem>
+                {(tokenSession?.canDownload || state.auth.isAuthenticated) && (
                 <DropdownMenuItem
                   onClick={() => { navigate('downloads'); setProfileOpen(false); }}
                   className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
@@ -187,6 +188,7 @@ export default function Navbar() {
                   <Download className="mr-2 h-4 w-4" />
                   Downloads
                 </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => { navigate('admin'); setProfileOpen(false); }}
                   className="cursor-pointer text-white/80 focus:text-white focus:bg-white/5"
