@@ -1,22 +1,30 @@
 {
-  "name": "PStream",
+  "name": "PStream — Stream. Discover. Enjoy.",
   "short_name": "PStream",
-  "description": "African entertainment streaming — movies, series, and more",
+  "description": "Uganda's premier movie streaming platform. Watch thousands of movies and series in HD quality.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0A0A0A",
   "theme_color": "#E50914",
-  "orientation": "portrait-primary",
+  "categories": ["entertainment", "streaming"],
+  "lang": "en",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
 }

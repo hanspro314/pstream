@@ -392,9 +392,19 @@ export default function MovieDetailPage({
 
   const handleDownload = () => {
     const url = detail?.playingUrl || movie.playingurl;
-    if (url) {
-      window.open(url, '_blank');
-    }
+    if (!url) return;
+    // Route through our proxy to bypass CDN hotlink protection
+    const title = (detail?.video_title || movie.title).replace(/[^a-zA-Z0-9 ]/g, '');
+    const filename = title.replace(/ +/g, '_') + '.mp4';
+    const proxyUrl = `/api/stream/video?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(filename)}`;
+    // Use a hidden anchor to trigger download
+    const a = document.createElement('a');
+    a.href = proxyUrl;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleSubmitReview = useCallback((review: StoredReview) => {

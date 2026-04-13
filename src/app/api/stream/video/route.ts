@@ -17,6 +17,8 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const videoUrl = searchParams.get('url');
+  const isDownload = searchParams.get('download') === '1';
+  const filename = searchParams.get('filename') || 'pstream-video.mp4';
 
   if (!videoUrl) {
     return NextResponse.json(
@@ -110,8 +112,15 @@ export async function GET(request: NextRequest) {
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
 
-    // Cache control — allow browser to cache video segments
-    responseHeaders.set('Cache-Control', 'public, max-age=86400');
+    // Download mode: add Content-Disposition to trigger browser download
+    if (isDownload) {
+      const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+      responseHeaders.set('Content-Disposition', `attachment; filename="${sanitized}"`);
+      responseHeaders.set('Cache-Control', 'no-store');
+    } else {
+      // Cache control — allow browser to cache video segments
+      responseHeaders.set('Cache-Control', 'public, max-age=86400');
+    }
 
     if (res.status === 206 || rangeHeader) {
       return new NextResponse(res.body, {
