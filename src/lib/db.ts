@@ -106,13 +106,10 @@ export async function findAccessCode(where: { id?: string; code?: string }) {
     // Try exact match first
     let r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE code = ?', args: [normalized] });
     if (r.rows[0]) return r.rows[0];
-    // Fallback: match by alphanumeric part only (handles stripped dashes)
+    // Fallback: match by alphanumeric part (handles stripped dashes like PS2YJ3AM vs PS-2YJ3AM)
     const alphaOnly = normalized.replace(/[^A-Z0-9]/g, '');
-    if (alphaOnly !== normalized) {
-      r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE REPLACE(code, "-", "") = ?', args: [alphaOnly] });
-      return r.rows[0] || null;
-    }
-    return null;
+    r = await getDb().execute({ sql: 'SELECT * FROM AccessCode WHERE REPLACE(code, "-", "") = ?', args: [alphaOnly] });
+    return r.rows[0] || null;
   }
   return null;
 }
