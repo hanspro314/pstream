@@ -1,27 +1,26 @@
 /* PStream Database Client — supports local SQLite and Turso (cloud libsql) */
 
 import { PrismaClient } from '@prisma/client';
+import { PrismaLibSQL } from '@prisma/adapter-libsql';
+import { createClient, type Client } from '@libsql/client';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function createPrismaClient(): PrismaClient {
-  const dbUrl = process.env.DATABASE_URL || '';
+  const dbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
 
   if (dbUrl.startsWith('libsql://')) {
-    // Turso / libsql remote database — use require() for conditional import
-    const { PrismaLibSQL } = require('@prisma/adapter-libsql');
-    const { createClient } = require('@libsql/client');
-
-    const libsql = createClient({
+    // Remote Turso database — use libsql adapter
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+    const libsql: Client = createClient({
       url: dbUrl,
-      authToken: process.env.TURSO_AUTH_TOKEN,
+      ...(authToken ? { authToken } : {}),
     });
-
     const adapter = new PrismaLibSQL(libsql);
     return new PrismaClient({ adapter });
   }
 
-  // Local SQLite (development)
+  // Local SQLite file — use default Prisma SQLite engine
   return new PrismaClient();
 }
 
