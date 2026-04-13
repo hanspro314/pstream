@@ -38,6 +38,8 @@ export default function LoginPage() {
   const [showHowTo, setShowHowTo] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const logoTapCount = useRef(0);
+  const logoTapTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-login: check stored token session on mount
   useEffect(() => {
@@ -187,6 +189,18 @@ export default function LoginPage() {
     }
   };
 
+  // Hidden admin access: tap PStream logo 5 times quickly
+  const handleLogoTap = () => {
+    logoTapCount.current += 1;
+    if (logoTapTimer.current) clearTimeout(logoTapTimer.current);
+    logoTapTimer.current = setTimeout(() => { logoTapCount.current = 0; }, 2000);
+
+    if (logoTapCount.current >= 5) {
+      logoTapCount.current = 0;
+      navigate('admin');
+    }
+  };
+
   const whatsappNumber = adminConfig?.whatsapp || '256 700 000 000';
   const currency = adminConfig?.currency || 'UGX';
   const streamPrice = adminConfig?.streamPrice || 2000;
@@ -247,7 +261,12 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="text-center mb-8"
         >
-          <div className="inline-flex items-center gap-3 mb-4">
+          <div
+            className="inline-flex items-center gap-3 mb-4 cursor-pointer select-none"
+            onClick={handleLogoTap}
+            role="button"
+            tabIndex={0}
+          >
             <div className="bg-[#E50914] rounded-xl w-12 h-12 flex items-center justify-center shadow-lg shadow-[#E50914]/30">
               <Play className="text-white w-6 h-6 ml-0.5" />
             </div>

@@ -72,9 +72,11 @@ export default function AdminDashboard() {
 
 // ─── PIN Gate Component ────────────────────────────────────
 function AdminPinGate({ onVerified, navigate }: { onVerified: () => void; navigate: (v: AppView) => void }) {
+  const { state } = useAppStore();
   const [adminPin, setAdminPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [pinLoading, setPinLoading] = useState(false);
+  const isAuthenticated = state.auth.isAuthenticated || state.tokenSession !== null;
 
   const handlePinSubmit = async () => {
     if (!adminPin.trim()) return;
@@ -144,11 +146,11 @@ function AdminPinGate({ onVerified, navigate }: { onVerified: () => void; naviga
         </div>
 
         <button
-          onClick={() => navigate('home')}
+          onClick={() => navigate(isAuthenticated ? 'home' : 'login')}
           className="w-full mt-6 flex items-center justify-center gap-2 text-sm text-white/40 hover:text-white/60 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Home
+          {isAuthenticated ? 'Back to Home' : 'Back to Login'}
         </button>
       </div>
     </motion.div>

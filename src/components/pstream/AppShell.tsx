@@ -467,22 +467,23 @@ export default function AppShell() {
     );
   };
 
-  // Auth pages don't need navbar/bottom nav
+  // Auth pages don't need navbar/bottom nav (admin has its own layout via PIN gate)
   const isAuthPage = state.currentView === 'login' || state.currentView === 'register';
+  const isAdminPage = state.currentView === 'admin';
 
-  // Auth guard: redirect to login if no token session and not on auth page
+  // Auth guard: redirect to login if no token session and not on auth/admin page
   useEffect(() => {
-    if (!isAuthenticated && !isAuthPage && state.hydrated) {
+    if (!isAuthenticated && !isAuthPage && !isAdminPage && state.hydrated) {
       navigate('login');
     }
-  }, [isAuthenticated, isAuthPage, state.hydrated]);
+  }, [isAuthenticated, isAuthPage, isAdminPage, state.hydrated]);
 
   // NOTE: Auth redirect is also handled by the HYDRATE action in the store.
   // This useEffect provides additional runtime guarding.
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white">
-      {!isAuthPage && <Navbar />}
+      {!isAuthPage && !isAdminPage && <Navbar />}
 
       <AnimatePresence mode="wait">
         <motion.main
@@ -511,10 +512,11 @@ export default function AppShell() {
           {isAuthenticated && state.currentView === 'kids' && <KidsPage />}
           {isAuthenticated && state.currentView === 'downloads' && <DownloadsPage />}
           {isAuthenticated && state.currentView === 'settings' && <SettingsPage />}
-          {isAuthenticated && state.currentView === 'admin' && <AdminDashboard />}
+          {/* Admin has its own PIN gate — no student auth required */}
+          {state.currentView === 'admin' && <AdminDashboard />}
 
-          {/* Fallback loading state while redirecting */}
-          {!isAuthenticated && !isAuthPage && (
+          {/* Fallback loading state while redirecting (not for admin — it has its own PIN gate) */}
+          {!isAuthenticated && !isAuthPage && !isAdminPage && (
             <div className="flex items-center justify-center min-h-screen">
               <div className="animate-spin w-8 h-8 border-2 border-[#E50914] border-t-transparent rounded-full" />
             </div>
@@ -522,7 +524,7 @@ export default function AppShell() {
         </motion.main>
       </AnimatePresence>
 
-      {!isAuthPage && <BottomNav />}
+      {!isAuthPage && !isAdminPage && <BottomNav />}
     </div>
   );
 }

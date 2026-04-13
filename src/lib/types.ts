@@ -2,7 +2,7 @@
 
 // ─── View / Navigation ───────────────────────────────────────────
 export type AppView = 'home' | 'browse' | 'search' | 'player' | 'subscribe' | 'profile'
-  | 'login' | 'register' | 'detail' | 'notifications' | 'help' | 'kids' | 'downloads' | 'settings';
+  | 'login' | 'register' | 'detail' | 'notifications' | 'help' | 'kids' | 'downloads' | 'settings' | 'admin';
 
 // ─── Movie Types ─────────────────────────────────────────────────
 export interface Movie {
