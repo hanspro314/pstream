@@ -1,14 +1,9 @@
-/* PStream Database Client — Turso via libsql adapter
+/* PStream Database Client — Turso via libsql driver adapter
  *
- * PROBLEM: Prisma's pre-compiled runtime (library.js) reads
- * process.env.DATABASE_URL internally. Turbopack bakes "undefined"
- * into that reference at build time, and even serverExternalPackages
- * doesn't prevent Prisma's own binary from containing the inlined value.
- *
- * SOLUTION: Rehydrate process.env.DATABASE_URL at module-load time using
- * a computed property the bundler cannot statically analyse. Then Prisma's
- * internal validation sees the real URL.
- */
+ * The Prisma schema uses a hardcoded dummy URL. All real database
+ * connectivity is handled by the @prisma/adapter-libsql adapter, which
+ * reads the Turso URL and auth token from environment variables at
+ * runtime. Prisma's own internal engine never touches DATABASE_URL. */
 
 import { PrismaClient } from '@prisma/client';
 import { PrismaLibSQL } from '@prisma/adapter-libsql';
@@ -18,46 +13,34 @@ type PrismaInstance = PrismaClient;
 
 const globalForPrisma = globalThis as unknown as { _prisma?: PrismaInstance };
 
-/* Step 1: Rehydrate process.env from the actual runtime environment.
-   The bundler turns process.env.X into "undefined" at build time, but
-   Vercel injects real values via a different mechanism at runtime.
-   Reading via bracket notation bypasses the static analysis. */
-function rehydrateEnv() {
-  const env = (globalThis as Record<string, unknown>)['process']?.['env'] as Record<string, string | undefined> | undefined;
-  if (!env) return;
-
-  const keys = ['DATABASE_URL', 'TURSO_AUTH_TOKEN'];
-  for (const k of keys) {
-    const realValue = env[k];
-    if (realValue !== undefined) {
-      env[k] = realValue;
-    }
-  }
-}
-
 function createPrismaClient(): PrismaClient {
-  /* Force the real env values into process.env so Prisma's internal
-     runtime validation doesn't see "undefined" */
-  rehydrateEnv();
+  // Read Turso credentials via bracket notation to prevent Turbopack
+  // from statically inlining "undefined" at build time.
+  const urlKey = 'DATABASE_URL';
+  const tokenKey = 'TURSO_AUTH_TOKEN';
+  const env = (globalThis as Record<string, Record<string, string | undefined>>)
+    ['process']?.['env'];
 
-  const dbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
+  const dbUrl = env?.[urlKey];
+  const authToken = env?.[tokenKey];
 
-  if (dbUrl.startsWith('libsql://')) {
-    const authToken = process.env.TURSO_AUTH_TOKEN;
-    const libsql: Client = createClient({
-      url: dbUrl,
-      ...(authToken ? { authToken } : {}),
-    });
-    const adapter = new PrismaLibSQL(libsql);
-    return new PrismaClient({ adapter });
+  // If no DATABASE_URL, fall back to local SQLite via Prisma's default
+  if (!dbUrl || !dbUrl.startsWith('libsql://')) {
+    return new PrismaClient();
   }
 
-  return new PrismaClient();
+  // Remote Turso database via libsql adapter
+  const libsql: Client = createClient({
+    url: dbUrl,
+    ...(authToken ? { authToken } : {}),
+  });
+  const adapter = new PrismaLibSQL(libsql);
+  return new PrismaClient({ adapter });
 }
 
-/* Lazy singleton via Proxy — never connects during build */
+/* Lazy singleton — never connects at module-load / build time */
 export const prisma: PrismaInstance = new Proxy({} as PrismaInstance, {
-  get(_target, prop, receiver) {
+  get(_target, prop) {
     if (!globalForPrisma._prisma) {
       globalForPrisma._prisma = createPrismaClient();
     }

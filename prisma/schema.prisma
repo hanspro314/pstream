@@ -4,7 +4,11 @@ generator client {
 
 datasource db {
   provider  = "sqlite"
-  url       = env("DATABASE_URL")
+  /* Hardcoded dummy URL — the real connection is handled entirely by
+     the @prisma/adapter-libsql adapter in src/lib/prisma.ts.
+     This prevents Turbopack from baking "undefined" into Prisma's
+     runtime when it replaces process.env.DATABASE_URL at build time. */
+  url       = "file:./prisma/dev.db"
 }
 
 model AdminConfig {
