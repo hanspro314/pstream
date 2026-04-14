@@ -20,7 +20,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "PStream — Stream. Discover. Enjoy.",
   description:
-    "Uganda's premier movie streaming platform. Watch thousands of movies and series in HD quality. New releases daily for just UGX 2,000/week.",
+    "Uganda's premier movie streaming platform. Watch thousands of movies and series in HD quality. New releases added daily.",
   keywords: [
     "PStream",
     "streaming",

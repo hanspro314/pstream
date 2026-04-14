@@ -62,7 +62,7 @@ const ALL_FAQS: FAQItem[] = [
   // Subscription & Payment
   {
     id: 'sp1', question: 'How much does PStream Premium cost?',
-    answer: 'PStream Premium costs just UGX 2,000 per week — that\'s less than UGX 300 per day! We also offer a monthly plan at UGX 6,000 (saving you UGX 2,000) and an annual plan at UGX 60,000 (saving you UGX 44,000). New users get a 1-day free trial to explore the platform before committing.',
+    answer: 'PStream offers flexible plans at pocket-friendly rates. Check the token page for the latest pricing on Stream and Stream + Download plans. New users also get a free trial to explore the platform before committing.',
     category: 'Subscription & Payment', icon: CreditCard,
   },
   {
@@ -77,7 +77,7 @@ const ALL_FAQS: FAQItem[] = [
   },
   {
     id: 'sp4', question: 'Do you offer a Family Plan?',
-    answer: 'Yes! Our Family Plan allows up to 4 simultaneous streams and supports 4 devices at UGX 5,000 per week. Each family member can have their own profile with personalized recommendations. The Family Plan is perfect for households that want everyone to enjoy PStream at the same time.',
+    answer: 'Yes! Our Family Plan allows up to 4 simultaneous streams and supports 4 devices. Each family member can have their own profile with personalized recommendations. The Family Plan is perfect for households that want everyone to enjoy PStream at the same time. Check the token page for current pricing.',
     category: 'Subscription & Payment', icon: User,
   },
   {

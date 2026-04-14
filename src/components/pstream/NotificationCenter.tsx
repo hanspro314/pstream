@@ -59,7 +59,7 @@ function generateDemoNotifications(): Notification[] {
     },
     {
       id: '8', type: 'subscription', title: 'Payment Confirmed',
-      message: 'Your payment of UGX 2,000 via MTN MoMo was successful. Premium access activated!',
+      message: 'Your payment via MTN MoMo was successful. Premium access activated!',
       timestamp: now - 1000 * 60 * 60 * 48, read: true,
       icon: 'crown',
     },

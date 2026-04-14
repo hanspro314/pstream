@@ -13,31 +13,36 @@ import { useAppStore } from '@/lib/store';
 import type { PaymentRecord, SubscriptionPlan } from '@/lib/types';
 
 // ─── Plans ────────────────────────────────────────────────────────
-const PLANS: (SubscriptionPlan & { savings?: string; highlight?: boolean })[] = [
-  {
-    id: 'weekly', name: 'Weekly', price: 2000, currency: 'UGX', duration: 'week',
-    screens: 1, quality: 'HD',
-    features: ['Unlimited streaming', 'HD quality', '1 screen', 'Mobile + tablet', 'Ad-free experience'],
-  },
-  {
-    id: 'monthly', name: 'Monthly', price: 6000, currency: 'UGX', duration: 'month',
-    screens: 2, quality: 'Full HD',
-    features: ['Everything in Weekly', 'Full HD quality', '2 screens', 'Download & offline', 'Priority support'],
-    savings: 'Save UGX 2,000', highlight: true,
-  },
-  {
-    id: 'annual', name: 'Annual', price: 60000, currency: 'UGX', duration: 'year',
-    screens: 4, quality: '4K Ultra HD',
-    features: ['Everything in Monthly', '4K Ultra HD', '4 screens', 'Early access to new releases', 'Family sharing'],
-    savings: 'Save UGX 44,000',
-  },
-  {
-    id: 'family', name: 'Family', price: 5000, currency: 'UGX', duration: 'week',
-    screens: 4, quality: 'Full HD',
-    features: ['Everything in Monthly', '4 simultaneous screens', '4 individual profiles', 'Kids mode included', 'Family recommendations'],
-    popular: true,
-  },
-];
+function buildPlans(streamPrice: number, downloadPrice: number, currency: string): (SubscriptionPlan & { savings?: string; highlight?: boolean })[] {
+  const weeklySave = Math.max(0, streamPrice * 4 - streamPrice * 3);
+  const annualSave = Math.max(0, streamPrice * 52 - streamPrice * 26);
+  return [
+    {
+      id: 'weekly', name: 'Weekly', price: streamPrice, currency, duration: 'week',
+      screens: 1, quality: 'HD',
+      features: ['Unlimited streaming', 'HD quality', '1 screen', 'Mobile + tablet', 'Ad-free experience'],
+    },
+    {
+      id: 'monthly', name: 'Monthly', price: streamPrice * 3, currency, duration: 'month',
+      screens: 2, quality: 'Full HD',
+      features: ['Everything in Weekly', 'Full HD quality', '2 screens', 'Download & offline', 'Priority support'],
+      savings: weeklySave > 0 ? `Save ${currency} ${weeklySave.toLocaleString()}` : 'Best value',
+      highlight: true,
+    },
+    {
+      id: 'annual', name: 'Annual', price: streamPrice * 26, currency, duration: 'year',
+      screens: 4, quality: '4K Ultra HD',
+      features: ['Everything in Monthly', '4K Ultra HD', '4 screens', 'Early access to new releases', 'Family sharing'],
+      savings: annualSave > 0 ? `Save ${currency} ${annualSave.toLocaleString()}` : 'Best value',
+    },
+    {
+      id: 'family', name: 'Family', price: downloadPrice, currency, duration: 'week',
+      screens: 4, quality: 'Full HD',
+      features: ['Everything in Monthly', '4 simultaneous screens', '4 individual profiles', 'Kids mode included', 'Family recommendations'],
+      popular: true,
+    },
+  ];
+}
 
 // ─── Features list ────────────────────────────────────────────────
 const ALL_FEATURES = [
@@ -53,20 +58,22 @@ const ALL_FEATURES = [
 
 // ─── Testimonials ─────────────────────────────────────────────────
 const testimonials = [
-  { name: 'Agnes N.', location: 'Kampala', text: 'PStream has the best Ugandan movies! I love how I can watch on my phone during the commute. The quality is amazing for just 2K per week.', rating: 5 },
+  { name: 'Agnes N.', location: 'Kampala', text: 'PStream has the best Ugandan movies! I love how I can watch on my phone during the commute. The quality is amazing and the price is so affordable.', rating: 5 },
   { name: 'Samuel K.', location: 'Entebbe', text: 'This is way better than other streaming apps. No buffering, great selection, and the price is unbeatable. My whole family uses it.', rating: 5 },
   { name: 'Patience M.', location: 'Jinja', text: 'I love the download feature — I can watch movies even when I don\'t have data. PStream changed how I entertain myself!', rating: 5 },
 ];
 
 // ─── Payment History (demo) ───────────────────────────────────────
-const demoPaymentHistory: PaymentRecord[] = [
-  { id: 'pay1', amount: 2000, method: 'mtn_momo', status: 'success', date: '2024-04-10', plan: 'Weekly', reference: 'PST-20240410-001' },
-  { id: 'pay2', amount: 6000, method: 'airtel_money', status: 'success', date: '2024-04-03', plan: 'Monthly', reference: 'PST-20240403-002' },
-  { id: 'pay3', amount: 2000, method: 'mtn_momo', status: 'success', date: '2024-03-27', plan: 'Weekly', reference: 'PST-20240327-003' },
-  { id: 'pay4', amount: 2000, method: 'mtn_momo', status: 'failed', date: '2024-03-20', plan: 'Weekly', reference: 'PST-20240320-004' },
-  { id: 'pay5', amount: 60000, method: 'airtel_money', status: 'success', date: '2024-03-01', plan: 'Annual', reference: 'PST-20240301-005' },
-  { id: 'pay6', amount: 2000, method: 'mtn_momo', status: 'success', date: '2024-02-15', plan: 'Weekly', reference: 'PST-20240215-006' },
-];
+function buildDemoPayments(streamPrice: number): PaymentRecord[] {
+  return [
+    { id: 'pay1', amount: streamPrice, method: 'mtn_momo', status: 'success', date: '2024-04-10', plan: 'Weekly', reference: 'PST-20240410-001' },
+    { id: 'pay2', amount: streamPrice * 3, method: 'airtel_money', status: 'success', date: '2024-04-03', plan: 'Monthly', reference: 'PST-20240403-002' },
+    { id: 'pay3', amount: streamPrice, method: 'mtn_momo', status: 'success', date: '2024-03-27', plan: 'Weekly', reference: 'PST-20240327-003' },
+    { id: 'pay4', amount: streamPrice, method: 'mtn_momo', status: 'failed', date: '2024-03-20', plan: 'Weekly', reference: 'PST-20240320-004' },
+    { id: 'pay5', amount: streamPrice * 26, method: 'airtel_money', status: 'success', date: '2024-03-01', plan: 'Annual', reference: 'PST-20240301-005' },
+    { id: 'pay6', amount: streamPrice, method: 'mtn_momo', status: 'success', date: '2024-02-15', plan: 'Weekly', reference: 'PST-20240215-006' },
+  ];
+}
 
 // ─── Promo Codes (demo) ───────────────────────────────────────────
 const DEMO_PROMOS = [
@@ -77,13 +84,13 @@ const DEMO_PROMOS = [
 
 // ─── FAQs ─────────────────────────────────────────────────────────
 const faqs = [
-  { q: 'How much does PStream Premium cost?', a: 'PStream offers multiple plans starting from UGX 2,000/week. We also have Monthly (UGX 6,000), Annual (UGX 60,000), and Family (UGX 5,000/week) plans with increasing benefits.' },
+  { q: 'How much does PStream Premium cost?', a: 'PStream offers flexible plans at pocket-friendly rates. Check the token page for the latest pricing on Stream and Stream + Download plans. We keep our prices affordable for every student!' },
   { q: 'What payment methods do you accept?', a: 'We accept MTN Mobile Money and Airtel Money. Simply enter your phone number and confirm the payment prompt on your device.' },
   { q: 'Can I watch on multiple devices?', a: 'The number of devices depends on your plan. Weekly allows 1 screen, Monthly allows 2 screens, and Annual/Family plans support up to 4 simultaneous screens.' },
   { q: 'How do I cancel my subscription?', a: 'You can cancel anytime from Profile > Settings. No questions asked, no hidden fees. Your access continues until the end of your billing period.' },
   { q: 'Is there a free trial?', a: 'Yes! New users get a 1-day free trial. No payment required — just sign up and enjoy 24 hours of unlimited streaming.' },
   { q: 'How do promo codes work?', a: 'Enter a promo code during checkout to get a discount on your subscription. Follow us on social media for exclusive promo codes! Codes have expiration dates and usage limits.' },
-  { q: 'What is the Family Plan?', a: 'The Family Plan (UGX 5,000/week) supports up to 4 simultaneous streams and 4 individual profiles. It includes Kids Mode and family-friendly content recommendations.' },
+  { q: 'What is the Family Plan?', a: 'The Family Plan supports up to 4 simultaneous streams and 4 individual profiles. It includes Kids Mode and family-friendly content recommendations. Check the token page for current pricing.' },
   { q: 'What movies are available?', a: 'We have thousands of movies across all genres — Action, Romance, Drama, Horror, Comedy, Sci-Fi, and more. New content is added daily!' },
 ];
 
@@ -102,6 +109,14 @@ export default function SubscribePage() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState('');
   const [discount, setDiscount] = useState(0);
+
+  const adminCfg = state.adminConfig;
+  const currency = adminCfg?.currency || 'UGX';
+  const streamPrice = adminCfg?.streamPrice || 2000;
+  const downloadPrice = adminCfg?.downloadPrice || 3500;
+
+  const PLANS = useMemo(() => buildPlans(streamPrice, downloadPrice, currency), [streamPrice, downloadPrice, currency]);
+  const demoPaymentHistory = useMemo(() => buildDemoPayments(streamPrice), [streamPrice]);
 
   const currentPlan = PLANS.find(p => p.id === selectedPlan)!;
   const finalPrice = currentPlan ? Math.round(currentPlan.price * (1 - discount / 100)) : 0;
@@ -155,7 +170,7 @@ export default function SubscribePage() {
           Stream. Discover. Enjoy.
         </h1>
         <p className="text-white/60 text-base md:text-lg">
-          Choose the plan that&apos;s right for you — starting at just <span className="text-[#E50914] font-bold">UGX 2,000/week</span>
+          Choose the plan that&apos;s right for you — starting at just <span className="text-[#E50914] font-bold">{currency} {streamPrice.toLocaleString()}/week</span>
         </p>
       </div>
 
@@ -215,7 +230,7 @@ export default function SubscribePage() {
                   </div>
 
                   <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-white text-2xl font-bold">UGX {plan.price.toLocaleString()}</span>
+                    <span className="text-white text-2xl font-bold">{plan.currency} {plan.price.toLocaleString()}</span>
                     <span className="text-white/40 text-xs">/{plan.duration}</span>
                   </div>
 
@@ -340,11 +355,11 @@ export default function SubscribePage() {
                 <span className="text-white text-4xl font-bold">
                   {discount > 0 ? (
                     <>
-                      <span className="text-lg line-through opacity-50 mr-1">UGX {currentPlan.price.toLocaleString()}</span>
-                      <span>UGX {finalPrice.toLocaleString()}</span>
+                      <span className="text-lg line-through opacity-50 mr-1">{currency} {currentPlan.price.toLocaleString()}</span>
+                      <span>{currency} {finalPrice.toLocaleString()}</span>
                     </>
                   ) : (
-                    <>UGX {currentPlan.price.toLocaleString()}</>
+                    <>{currency} {currentPlan.price.toLocaleString()}</>
                   )}
                 </span>
                 <span className="text-white/60 text-sm">/{currentPlan.duration}</span>
@@ -411,7 +426,7 @@ export default function SubscribePage() {
                 {isProcessing ? (
                   <><div className="w-4 h-4 border-2 border-[#E50914] border-t-transparent rounded-full animate-spin" />Processing...</>
                 ) : (
-                  <><CreditCard className="w-4 h-4" />Pay UGX {finalPrice.toLocaleString()}</>
+                  <><CreditCard className="w-4 h-4" />Pay {currency} {finalPrice.toLocaleString()}</>
                 )}
               </button>
             </div>
@@ -477,7 +492,7 @@ export default function SubscribePage() {
                   <p className="text-white/30 text-xs">{payment.reference}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-white text-sm font-medium">UGX {payment.amount.toLocaleString()}</p>
+                  <p className="text-white text-sm font-medium">{currency} {payment.amount.toLocaleString()}</p>
                   <p className="text-white/30 text-xs">{new Date(payment.date).toLocaleDateString('en-UG', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                 </div>
               </div>
