@@ -976,9 +976,24 @@ export default function VideoPlayer({
                 if (video?.error) {
                   switch (video.error.code) {
                     case 1: errorMsg = 'Video loading was aborted.'; break;
-                    case 2: errorMsg = 'Network error — the video source may be unreachable.'; break;
+                    case 2:
+                      // Network error — could be token revocation or genuine network issue
+                      // The video proxy returns JSON on 403, which the <video> element
+                      // interprets as a network error since it expects video bytes.
+                      errorMsg = 'Stream unavailable. Your access code may have expired or been deactivated.';
+                      // Trigger immediate token check
+                      dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
+                      dispatch({ type: 'LOGOUT' });
+                      try { sessionStorage.setItem('pstream_session_ended_reason', 'Your access code has expired or been deactivated. Please enter a new code.'); } catch { /* */ }
+                      break;
                     case 3: errorMsg = 'Video decoding failed — the format may not be supported by your browser.'; break;
-                    case 4: errorMsg = 'Video source not supported or the URL is invalid.'; break;
+                    case 4:
+                      // Source not supported — the proxy returned JSON (token error) instead of video
+                      errorMsg = 'Stream access denied. Your access code may have expired or been deactivated.';
+                      dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
+                      dispatch({ type: 'LOGOUT' });
+                      try { sessionStorage.setItem('pstream_session_ended_reason', 'Your access code has expired or been deactivated. Please enter a new code.'); } catch { /* */ }
+                      break;
                   }
                 }
                 setVideoError(errorMsg);

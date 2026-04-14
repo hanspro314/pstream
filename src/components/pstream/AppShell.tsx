@@ -39,7 +39,8 @@ const pageVariants = {
 };
 
 // How often to re-validate the token with the server (ms)
-const TOKEN_CHECK_INTERVAL = 60_000; // 60 seconds
+// 30 seconds balances security (fast revocation detection) with server load
+const TOKEN_CHECK_INTERVAL = 30_000; // 30 seconds
 
 export default function AppShell() {
   const { state, dispatch, navigate } = useAppStore();
@@ -122,7 +123,7 @@ export default function AppShell() {
   }, []);
 
   // ─── Periodic token re-validation ──────────────────────────
-  // Checks every 60s to catch revocation, expiry, device mismatch
+  // Checks every 30s to catch revocation, expiry, device mismatch
   useEffect(() => {
     if (!state.tokenSession?.code || !isAuthenticated) return;
 
@@ -148,7 +149,18 @@ export default function AppShell() {
       try {
         const data = await fetchWithCache('dashboard', fetchDashboard);
         dispatch({ type: 'SET_DASHBOARD', payload: data });
-      } catch {
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '';
+        // If the error indicates token issues, trigger session end
+        if (message.includes('401') || message.includes('403') || message.includes('expired') || message.includes('deactivated') || message.includes('token')) {
+          if (!sessionEndedRef.current) {
+            sessionEndedRef.current = true;
+            const reason = 'Your session has ended. Please enter your access code again.';
+            dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
+            dispatch({ type: 'LOGOUT' });
+            try { sessionStorage.setItem('pstream_session_ended_reason', reason); } catch { /* */ }
+          }
+        }
         dispatch({ type: 'SET_DASHBOARD_LOADING', payload: false });
       }
     };

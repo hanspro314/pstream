@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
 
   // ─── Token validation for ALL requests ──────────────────────
   // Every stream request requires a valid, active token
-  const tokenCode = searchParams.get('token');
   if (!tokenCode) {
     return NextResponse.json(
       { success: false, error: 'Access token required. Please log in to stream.' },
@@ -167,8 +166,11 @@ export async function GET(request: NextRequest) {
       responseHeaders.set('Content-Disposition', `attachment; filename="${sanitized}"`);
       responseHeaders.set('Cache-Control', 'no-store');
     } else {
-      // YouTube-style cache: browser can cache segments, revalidate after 1 hour
-      responseHeaders.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+      // SECURITY: no-store ensures video cannot be replayed from cache after token revocation.
+      // The browser MUST revalidate with our proxy on every request, which checks the token.
+      responseHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      responseHeaders.set('Pragma', 'no-cache');
+      responseHeaders.set('Expires', '0');
     }
 
     if (res.status === 206 || rangeHeader) {

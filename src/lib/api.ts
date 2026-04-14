@@ -11,6 +11,19 @@ interface ApiResponseWrapper<T> {
   error?: string;
 }
 
+/** Get the stored token code from localStorage (client-only) */
+function getStoredTokenCode(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem('pstream_token_session');
+    if (stored) {
+      const session = JSON.parse(stored);
+      return session?.code || null;
+    }
+  } catch { /* */ }
+  return null;
+}
+
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...options,
@@ -35,19 +48,25 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   return json as T;
 }
 
-/** Fetch dashboard data (categories, movies, banner) */
+/** Fetch dashboard data (categories, movies, banner) — requires valid token */
 export async function fetchDashboard(): Promise<DashboardResponse> {
-  return fetchApi<DashboardResponse>(`${API_BASE}/dashboard`);
+  const token = getStoredTokenCode();
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+  return fetchApi<DashboardResponse>(`${API_BASE}/dashboard${tokenParam}`);
 }
 
-/** Fetch movie preview/detail by video ID */
+/** Fetch movie preview/detail by video ID — requires valid token */
 export async function fetchPreview(vid: string): Promise<MovieDetail> {
-  return fetchApi<MovieDetail>(`${API_BASE}/preview?vid=${encodeURIComponent(vid)}`);
+  const token = getStoredTokenCode();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+  return fetchApi<MovieDetail>(`${API_BASE}/preview?vid=${encodeURIComponent(vid)}${tokenParam}`);
 }
 
-/** Search movies by query */
+/** Search movies by query — requires valid token */
 export async function fetchSearch(query: string): Promise<SearchResult[]> {
-  return fetchApi<SearchResult[]>(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+  const token = getStoredTokenCode();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+  return fetchApi<SearchResult[]>(`${API_BASE}/search?q=${encodeURIComponent(query)}${tokenParam}`);
 }
 
 // ─── Auth API Functions ──────────────────────────────────────────

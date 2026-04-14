@@ -1,6 +1,10 @@
-/* Search API Proxy — fetches search results with JWT auth */
+/* Search API Proxy — fetches search results with JWT auth
+ *
+ * REQUIRES valid token — checks on every request.
+ */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { validateRequestToken } from '@/lib/validate-token';
 
 const API_BASE = 'https://munoapi.com/api';
 
@@ -8,6 +12,10 @@ const JWT_TOKEN = process.env.PSTREAM_API_TOKEN || '';
 
 export async function GET(request: NextRequest) {
   try {
+    // ─── Token validation ──────────────────────────
+    const tokenCheck = await validateRequestToken(request);
+    if (!tokenCheck.valid) return tokenCheck.response;
+
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
 
