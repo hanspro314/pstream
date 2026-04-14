@@ -218,16 +218,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const movies = Array.from(movieMap.values());
+    // ─── Filter out raw episode fragments ────────────────────────
+    // Upstream leaks individual episodes as "EPS 14", "EPS 247", etc.
+    // These are not real browsable movies — filter them out.
+    const filteredMovies = Array.from(movieMap.values()).filter((m) => {
+      const title = m.title.trim();
+      // Remove entries that are just "EPS" followed by a number/space
+      if (/^EPS\s*\d*\s*$/i.test(title)) return false;
+      // Remove entries with no real title
+      if (title.length < 3) return false;
+      return true;
+    });
 
     // ─── Cache the result ──────────────────────────
-    cachedLibrary = { movies, timestamp: Date.now() };
+    cachedLibrary = { movies: filteredMovies, timestamp: Date.now() };
 
     return NextResponse.json({
       success: true,
-      data: movies,
+      data: filteredMovies,
       meta: {
-        total: movies.length,
+        total: filteredMovies.length,
         cached: false,
         endpoints_queried: tasks.length + 1, // +1 for dashboard
       },
