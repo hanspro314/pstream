@@ -44,6 +44,15 @@ export default function LoginPage() {
   // Auto-login: check stored token session on mount
   useEffect(() => {
     const autoLogin = async () => {
+      // Check for session-ended reason from AppShell
+      try {
+        const endedReason = sessionStorage.getItem('pstream_session_ended_reason');
+        if (endedReason) {
+          sessionStorage.removeItem('pstream_session_ended_reason');
+          setError(endedReason);
+        }
+      } catch { /* */ }
+
       setIsValidating(true);
       try {
         const stored = localStorage.getItem('pstream_token_session');

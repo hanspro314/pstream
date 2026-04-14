@@ -29,21 +29,43 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Download mode: validate token tier server-side
+  // ─── Token validation for ALL requests ──────────────────────
+  // Every stream request requires a valid, active token
+  const tokenCode = searchParams.get('token');
+  if (!tokenCode) {
+    return NextResponse.json(
+      { success: false, error: 'Access token required. Please log in to stream.' },
+      { status: 401 }
+    );
+  }
+  const accessCode = await findAccessCode({ code: tokenCode.trim().toUpperCase() });
+  if (!accessCode) {
+    return NextResponse.json(
+      { success: false, error: 'Invalid access token.' },
+      { status: 403 }
+    );
+  }
+  if (accessCode.status === 'revoked') {
+    return NextResponse.json(
+      { success: false, error: 'Access token has been deactivated.' },
+      { status: 403 }
+    );
+  }
+  if (accessCode.status === 'expired' || (accessCode.expiresAt && new Date(String(accessCode.expiresAt)) < new Date())) {
+    return NextResponse.json(
+      { success: false, error: 'Access token has expired.' },
+      { status: 403 }
+    );
+  }
+  if (accessCode.status !== 'active') {
+    return NextResponse.json(
+      { success: false, error: 'Access token is not active.' },
+      { status: 403 }
+    );
+  }
+
+  // Download mode: additionally validate tier
   if (isDownload) {
-    if (!tokenCode) {
-      return NextResponse.json(
-        { success: false, error: 'Download requires a valid access token' },
-        { status: 403 }
-      );
-    }
-    const accessCode = await findAccessCode({ code: tokenCode.trim().toUpperCase() });
-    if (!accessCode || accessCode.status !== 'active') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired access token' },
-        { status: 403 }
-      );
-    }
     if (accessCode.tier !== 'download') {
       return NextResponse.json(
         { success: false, error: 'Your plan does not support downloads. Upgrade to Stream + Download.' },

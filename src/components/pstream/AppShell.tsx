@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
 import { fetchDashboard, fetchPreview, fetchWithCache, checkTokenStatus, fetchAdminConfig } from '@/lib/api';
@@ -38,39 +38,74 @@ const pageVariants = {
   exit: { opacity: 0, y: -8 },
 };
 
+// How often to re-validate the token with the server (ms)
+const TOKEN_CHECK_INTERVAL = 60_000; // 60 seconds
+
 export default function AppShell() {
   const { state, dispatch, navigate } = useAppStore();
   const [movieDetail, setMovieDetail] = useState<MovieDetail | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [sessionEndedReason, setSessionEndedReason] = useState<string | null>(null);
+  const [isCheckingToken, setIsCheckingToken] = useState(false);
+  const tokenCheckTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionEndedRef = useRef(false); // prevent duplicate logout dispatches
+
   // Use token session for auth — derive isAuthenticated from it
   const isAuthenticated = state.auth.isAuthenticated || state.tokenSession !== null;
+
+  // ─── Token validation helper ──────────────────────────────
+  const validateToken = useCallback(async (code: string) => {
+    if (isCheckingToken) return;
+    setIsCheckingToken(true);
+    try {
+      const fingerprint = await getStoredFingerprint();
+      const result = await checkTokenStatus(code, fingerprint);
+      if (result.valid) {
+        // Refresh session data
+        dispatch({
+          type: 'SET_TOKEN_SESSION',
+          payload: {
+            code,
+            tier: result.tier || state.tokenSession?.tier || 'stream',
+            expiresAt: result.expiresAt || state.tokenSession?.expiresAt || '',
+            maxDownloads: result.maxDownloads || state.tokenSession?.maxDownloads || 0,
+          },
+        });
+        sessionEndedRef.current = false;
+      } else {
+        // Token is no longer valid — kick the user out
+        if (!sessionEndedRef.current) {
+          sessionEndedRef.current = true;
+          const reason = result.reason === 'revoked'
+            ? 'Your access code has been deactivated by the admin.'
+            : result.reason === 'device_mismatch'
+              ? 'This access code is locked to a different device.'
+              : 'Your access code has expired. Get a new one to continue watching.';
+          setSessionEndedReason(reason);
+          dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
+          dispatch({ type: 'LOGOUT' });
+          // Store reason so LoginPage can display it
+          try { sessionStorage.setItem('pstream_session_ended_reason', reason); } catch { /* */ }
+          // Clear the timer — no point checking anymore
+          if (tokenCheckTimer.current) {
+            clearInterval(tokenCheckTimer.current);
+            tokenCheckTimer.current = null;
+          }
+        }
+      }
+    } catch {
+      // Network error — don't kick the user out, just retry later
+    } finally {
+      setIsCheckingToken(false);
+    }
+  }, [dispatch, isCheckingToken, state.tokenSession]);
 
   // Validate token session on load and fetch admin config
   useEffect(() => {
     const validateAndLoad = async () => {
       // Validate token session if it exists
       if (state.tokenSession?.code && !state.auth.isAuthenticated) {
-        try {
-          const fingerprint = await getStoredFingerprint();
-          const result = await checkTokenStatus(state.tokenSession.code, fingerprint);
-          if (result.valid) {
-            dispatch({
-              type: 'SET_TOKEN_SESSION',
-              payload: {
-                code: state.tokenSession.code,
-                tier: result.tier || state.tokenSession.tier || 'stream',
-                expiresAt: result.expiresAt || state.tokenSession.expiresAt || '',
-                maxDownloads: result.maxDownloads || state.tokenSession.maxDownloads || 0,
-              },
-            });
-          } else {
-            // Token no longer valid
-            dispatch({ type: 'SET_TOKEN_SESSION', payload: null });
-            dispatch({ type: 'LOGOUT' });
-          }
-        } catch {
-          // Silently fail — let user continue
-        }
+        await validateToken(state.tokenSession.code);
       }
 
       // Fetch admin config
@@ -85,6 +120,26 @@ export default function AppShell() {
     };
     validateAndLoad();
   }, []);
+
+  // ─── Periodic token re-validation ──────────────────────────
+  // Checks every 60s to catch revocation, expiry, device mismatch
+  useEffect(() => {
+    if (!state.tokenSession?.code || !isAuthenticated) return;
+
+    // Start periodic check
+    tokenCheckTimer.current = setInterval(() => {
+      if (state.tokenSession?.code) {
+        validateToken(state.tokenSession.code);
+      }
+    }, TOKEN_CHECK_INTERVAL);
+
+    return () => {
+      if (tokenCheckTimer.current) {
+        clearInterval(tokenCheckTimer.current);
+        tokenCheckTimer.current = null;
+      }
+    };
+  }, [state.tokenSession?.code, isAuthenticated, validateToken]);
 
   // Fetch dashboard on mount
   useEffect(() => {
@@ -229,7 +284,7 @@ export default function AppShell() {
 
     // Route video through our proxy to bypass CDN hotlink / referer restrictions
     const rawUrl = movieDetail?.playingUrl || movie.playingurl || '';
-    const videoSrc = rawUrl ? `/api/stream/video?url=${encodeURIComponent(rawUrl)}` : '';
+    const videoSrc = rawUrl ? `/api/stream/video?url=${encodeURIComponent(rawUrl)}&token=${encodeURIComponent(state.tokenSession?.code || '')}` : '';
     const posterUrl = movieDetail?.thumbnail
       ? (movieDetail.thumbnail.startsWith('http') ? movieDetail.thumbnail : `https://munoapp.org/munowatch-api/laba/yo/naki/${movieDetail.thumbnail}.jpg`)
       : (movie.image.startsWith('http') ? movie.image : `https://munoapp.org/munowatch-api/laba/yo/naki/${movie.image}.jpg`);
