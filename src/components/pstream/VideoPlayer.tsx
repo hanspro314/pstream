@@ -170,6 +170,7 @@ export default function VideoPlayer({
   const statsTapRef = useRef<{ count: number; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, timer: null });
   const isTouchRef = useRef(false);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { state, dispatch } = useAppStore();
   const selectedMovie = state.selectedMovie;
@@ -328,14 +329,40 @@ export default function VideoPlayer({
     setIsMuted(video.muted);
   }, []);
 
-  const toggleFullscreen = useCallback(() => {
+  const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
     if (!container) return;
     if (!document.fullscreenElement) {
-      container.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
+      try {
+        await container.requestFullscreen();
+        // Force landscape orientation on mobile devices
+        try {
+          const orientation = (screen.orientation as unknown as { lock?: (orientation: string) => Promise<void> });
+          if (orientation.lock) {
+            await orientation.lock('landscape');
+          }
+        } catch {
+          // Orientation lock not supported or denied — fullscreen still works
+        }
+        setIsFullscreen(true);
+      } catch {
+        // Fullscreen not supported
+      }
     } else {
-      document.exitFullscreen().catch(() => {});
+      // Unlock orientation before exiting fullscreen
+      try {
+        const orientation = (screen.orientation as unknown as { unlock?: () => Promise<void> });
+        if (orientation.unlock) {
+          await orientation.unlock();
+        }
+      } catch {
+        // Orientation unlock not supported
+      }
+      try {
+        await document.exitFullscreen();
+      } catch {
+        // Exit fullscreen failed
+      }
       setIsFullscreen(false);
     }
   }, []);
@@ -637,17 +664,35 @@ export default function VideoPlayer({
     return () => window.removeEventListener('keydown', handleKeydown);
   }, [state.currentView, togglePlay, toggleFullscreen, toggleMute, seek, toggleSubtitles]);
 
-  // Auto-hide controls
+  // Auto-hide controls — hide after 3s of inactivity while playing.
+  // NOTE: NOT dependent on currentTime so timeupdate events don't keep resetting.
   useEffect(() => {
     if (isPlaying && !showVolumeSlider && !showSettingsMenu) {
       resetControlsTimeout();
+    } else if (!isPlaying) {
+      // When paused, keep controls visible but clear any running timeout
+      clearControlsTimeout();
     }
     return () => clearControlsTimeout();
-  }, [isPlaying, showVolumeSlider, showSettingsMenu, currentTime, resetControlsTimeout, clearControlsTimeout]);
+  }, [isPlaying, showVolumeSlider, showSettingsMenu, resetControlsTimeout, clearControlsTimeout]);
 
-  // Fullscreen change listener
+  // Fullscreen change listener — also unlock orientation when exiting
   useEffect(() => {
-    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const handleFsChange = () => {
+      const isFs = !!document.fullscreenElement;
+      setIsFullscreen(isFs);
+      if (!isFs) {
+        // Unlock screen orientation when leaving fullscreen
+        try {
+          const orientation = (screen.orientation as unknown as { unlock?: () => Promise<void> });
+          if (orientation.unlock) {
+            orientation.unlock();
+          }
+        } catch {
+          // Orientation unlock not supported
+        }
+      }
+    };
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
@@ -672,6 +717,7 @@ export default function VideoPlayer({
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
     };
   }, []);
 
@@ -728,7 +774,7 @@ export default function VideoPlayer({
                 poster={poster || undefined}
                 className="w-full h-full object-contain"
                 playsInline
-                preload="metadata"
+                preload="auto"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onTimeUpdate={() => {
@@ -765,8 +811,20 @@ export default function VideoPlayer({
               onDurationChange={() => {
                 if (videoRef.current) setDuration(videoRef.current.duration);
               }}
-              onWaiting={() => setIsLoading(true)}
-              onCanPlay={() => setIsLoading(false)}
+              onWaiting={() => {
+                // Only show loading spinner if buffering takes longer than 500ms
+                // to avoid flashing on minor buffer hiccups
+                if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+                loadingTimeoutRef.current = setTimeout(() => setIsLoading(true), 500);
+              }}
+              onCanPlay={() => {
+                // Cancel any pending loading spinner
+                if (loadingTimeoutRef.current) {
+                  clearTimeout(loadingTimeoutRef.current);
+                  loadingTimeoutRef.current = null;
+                }
+                setIsLoading(false);
+              }}
               onEnded={() => {
                 setIsPlaying(false);
                 // Trigger next episode + autoplay countdown
