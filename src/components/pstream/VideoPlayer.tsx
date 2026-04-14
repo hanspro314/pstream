@@ -1,4 +1,4 @@
-/* PStream Video Player — Full-featured HTML5 video player with modern streaming controls */
+/* PStream Video Player — Full-featured HTML5 video player with YouTube-style streaming controls */
 
 'use client';
 
@@ -171,6 +171,14 @@ export default function VideoPlayer({
   const isTouchRef = useRef(false);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref to track showSettingsMenu without stale closure issues in timeouts
+  const showSettingsMenuRef = useRef(false);
+  // Ref to track showVolumeSlider without stale closure
+  const showVolumeSliderRef = useRef(false);
+  // Ref to track buffer health monitoring
+  const bufferMonitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Stall detection ref
+  const stallRecoveryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { state, dispatch } = useAppStore();
   const selectedMovie = state.selectedMovie;
@@ -191,6 +199,12 @@ export default function VideoPlayer({
 
   // ─── State: Settings ─────────────────────────────────────────
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+
+  // ─── Sync refs with state (placed right after all state they track) ──
+  useEffect(() => {
+    showSettingsMenuRef.current = showSettingsMenu;
+    showVolumeSliderRef.current = showVolumeSlider;
+  }, [showSettingsMenu, showVolumeSlider]);
 
   // Auto-play when src changes
   useEffect(() => {
@@ -237,6 +251,9 @@ export default function VideoPlayer({
 
   // ─── State: Video Resolution (for stats) ────────────────────
   const [videoResolution, setVideoResolution] = useState('N/A');
+
+  // ─── State: Network Quality ────────────────────────────────
+  const [networkQuality, setNetworkQuality] = useState<'high' | 'medium' | 'low' | 'unknown'>('unknown');
 
   // ─── State: Episode Playlist ─────────────────────────────────
   const [showPlaylist, setShowPlaylist] = useState(false);
@@ -290,9 +307,12 @@ export default function VideoPlayer({
   const resetControlsTimeout = useCallback(() => {
     clearControlsTimeout();
     controlsTimeoutRef.current = setTimeout(() => {
-      if (!showSettingsMenu) setShowControls(false);
+      // Use ref instead of closure to avoid stale values
+      if (!showSettingsMenuRef.current && !showVolumeSliderRef.current) {
+        setShowControls(false);
+      }
     }, 3000);
-  }, [clearControlsTimeout, showSettingsMenu]);
+  }, [clearControlsTimeout]);
 
   // ─── Player Controls ────────────────────────────────────────
   const togglePlay = useCallback(() => {
@@ -331,33 +351,22 @@ export default function VideoPlayer({
 
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
+    const video = videoRef.current;
     if (!container) return;
     if (!document.fullscreenElement) {
       try {
-        await container.requestFullscreen();
-        // Force landscape orientation on mobile devices
-        try {
-          const orientation = (screen.orientation as unknown as { lock?: (orientation: string) => Promise<void> });
-          if (orientation.lock) {
-            await orientation.lock('landscape');
-          }
-        } catch {
-          // Orientation lock not supported or denied — fullscreen still works
+        // On iOS Safari, use webkitEnterFullscreen on the video element itself
+        if (video && (video as unknown as { webkitEnterFullscreen?: () => Promise<void> }).webkitEnterFullscreen) {
+          await (video as unknown as { webkitEnterFullscreen: () => Promise<void> }).webkitEnterFullscreen();
+          setIsFullscreen(true);
+          return;
         }
+        await container.requestFullscreen();
         setIsFullscreen(true);
       } catch {
         // Fullscreen not supported
       }
     } else {
-      // Unlock orientation before exiting fullscreen
-      try {
-        const orientation = (screen.orientation as unknown as { unlock?: () => Promise<void> });
-        if (orientation.unlock) {
-          await orientation.unlock();
-        }
-      } catch {
-        // Orientation unlock not supported
-      }
       try {
         await document.exitFullscreen();
       } catch {
@@ -509,13 +518,27 @@ export default function VideoPlayer({
       singleTapTimerRef.current = setTimeout(() => {
         singleTapTimerRef.current = null;
         // Single tap confirmed — toggle controls visibility (YouTube mobile style)
-        setShowControls(prev => !prev);
+        setShowControls(prev => {
+          const willShow = !prev;
+          // If controls are being shown and video is playing, start auto-hide timer
+          // This is the key fix: mobile taps now properly restart the auto-hide countdown
+          if (willShow) {
+            const video = videoRef.current;
+            if (video && !video.paused) {
+              resetControlsTimeout();
+            }
+          } else {
+            // Controls hidden — clear any pending auto-hide
+            clearControlsTimeout();
+          }
+          return willShow;
+        });
       }, 250);
     }
 
     // Prevent browser from synthesizing a click event from this touch
     e.preventDefault();
-  }, [seek]);
+  }, [seek, resetControlsTimeout, clearControlsTimeout]);
 
   // ─── Stats Toggle (7 taps or 'S' key) ──────────────────────
   const handleStatsTap = useCallback(() => {
@@ -665,32 +688,37 @@ export default function VideoPlayer({
   }, [state.currentView, togglePlay, toggleFullscreen, toggleMute, seek, toggleSubtitles]);
 
   // Auto-hide controls — hide after 3s of inactivity while playing.
+  // Uses refs for settings/slider checks to avoid stale closure re-renders.
   // NOTE: NOT dependent on currentTime so timeupdate events don't keep resetting.
   useEffect(() => {
-    if (isPlaying && !showVolumeSlider && !showSettingsMenu) {
+    if (isPlaying && !showVolumeSliderRef.current && !showSettingsMenuRef.current) {
       resetControlsTimeout();
     } else if (!isPlaying) {
       // When paused, keep controls visible but clear any running timeout
       clearControlsTimeout();
     }
     return () => clearControlsTimeout();
-  }, [isPlaying, showVolumeSlider, showSettingsMenu, resetControlsTimeout, clearControlsTimeout]);
+  }, [isPlaying, resetControlsTimeout, clearControlsTimeout]);
 
-  // Fullscreen change listener — also unlock orientation when exiting
+  // Fullscreen change listener — lock orientation AFTER fullscreen is confirmed
+  // (locking before fullscreen is granted causes errors on many Android browsers)
   useEffect(() => {
     const handleFsChange = () => {
       const isFs = !!document.fullscreenElement;
       setIsFullscreen(isFs);
-      if (!isFs) {
-        // Unlock screen orientation when leaving fullscreen
-        try {
-          const orientation = (screen.orientation as unknown as { unlock?: () => Promise<void> });
-          if (orientation.unlock) {
-            orientation.unlock();
-          }
-        } catch {
-          // Orientation unlock not supported
+      try {
+        const orientation = (screen.orientation as unknown as { lock?: (o: string) => Promise<void>; unlock?: () => Promise<void> });
+        if (isFs) {
+          // Lock to landscape AFTER entering fullscreen (YouTube does the same)
+          orientation.lock?.('landscape').catch(() => {
+            // Orientation lock not supported or denied — fullscreen still works fine
+          });
+        } else {
+          // Unlock orientation when leaving fullscreen
+          orientation.unlock?.().catch(() => {});
         }
+      } catch {
+        // Screen Orientation API not available
       }
     };
     document.addEventListener('fullscreenchange', handleFsChange);
@@ -712,12 +740,79 @@ export default function VideoPlayer({
   // Ref to track previous skip button for efficient updates
   const skipButtonRef = useRef<'intro' | 'recap' | 'credits' | null>(null);
 
-  // Cleanup countdown and single-tap timer on unmount
+  // ─── Network quality detection (YouTube-style) ───────────
+  useEffect(() => {
+    const updateNetworkQuality = () => {
+      const nav = navigator as unknown as {
+        connection?: { effectiveType?: string; downlink?: number; saveData?: boolean };
+      };
+      const conn = nav.connection;
+      if (conn && conn.effectiveType) {
+        if (conn.saveData || conn.effectiveType === '2g' || (conn.downlink !== undefined && conn.downlink < 0.5)) {
+          setNetworkQuality('low');
+        } else if (conn.effectiveType === '3g' || (conn.downlink !== undefined && conn.downlink < 1.5)) {
+          setNetworkQuality('medium');
+        } else {
+          setNetworkQuality('high');
+        }
+      }
+    };
+    updateNetworkQuality();
+    const nav = navigator as unknown as {
+      connection?: {
+        addEventListener?: (type: string, fn: () => void) => void;
+        removeEventListener?: (type: string, fn: () => void) => void;
+      };
+    };
+    nav.connection?.addEventListener?.('change', updateNetworkQuality);
+    return () => {
+      nav.connection?.removeEventListener?.('change', updateNetworkQuality);
+    };
+  }, []);
+
+  // ─── YouTube-style buffer monitoring & stall recovery ──────
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Monitor buffer health every 1 second while playing
+    bufferMonitorRef.current = setInterval(() => {
+      if (video.paused || video.ended) return;
+      const buf = video.buffered;
+      if (buf.length === 0) return;
+      const bufferEnd = buf.end(buf.length - 1);
+      const ahead = bufferEnd - video.currentTime;
+      // Update stats
+      setBuffered(bufferEnd);
+      // If buffer ahead is critically low (< 2s), video will likely stall soon
+      // YouTube pre-buffers 30-60s ahead; we aim for at least 10s
+    }, 1000);
+
+    return () => {
+      if (bufferMonitorRef.current) clearInterval(bufferMonitorRef.current);
+    };
+  }, [src]); // Re-create when source changes
+
+  // ─── Stall recovery: if video is stuck in 'waiting' for too long, try to nudge it
+  // YouTube does this by slightly adjusting playback position to trigger a re-buffer
+  const handleStallRecovery = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.readyState >= 3) return; // HAVE_FUTURE_DATA or better = no stall
+    // If stuck for more than 3s total, try nudging currentTime by 0.1s
+    if (video.currentTime > 0) {
+      if (process.env.NODE_ENV !== 'production') console.log('[PStream] Stall recovery: nudging playback position');
+      video.currentTime = video.currentTime + 0.1;
+    }
+  }, []);
+
+  // Cleanup all timers on unmount
   useEffect(() => {
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
       if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+      if (bufferMonitorRef.current) clearInterval(bufferMonitorRef.current);
+      if (stallRecoveryRef.current) clearTimeout(stallRecoveryRef.current);
     };
   }, []);
 
@@ -726,6 +821,8 @@ export default function VideoPlayer({
   const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
   const showNextEpisodeBtn = hasNextEpisode && duration > 30 && currentTime >= duration - 30 && currentTime < duration - 1;
   const bufferHealth = buffered - currentTime;
+  // Buffer health indicator for stats (green/yellow/red like YouTube)
+  const bufferStatus = bufferHealth > 10 ? 'healthy' : bufferHealth > 3 ? 'moderate' : bufferHealth > 0 ? 'low' : 'empty';
 
   const hasEpisodes = episodeList && episodeList.length > 0;
 
@@ -774,8 +871,15 @@ export default function VideoPlayer({
                 poster={poster || undefined}
                 className="w-full h-full object-contain"
                 playsInline
-                preload="auto"
-              onPlay={() => setIsPlaying(true)}
+                preload="metadata"
+              onPlay={() => {
+                setIsPlaying(true);
+                // YouTube-style: once playback starts, switch from metadata-only preload to aggressive buffering
+                const v = videoRef.current;
+                if (v && v.preload !== 'auto') {
+                  v.preload = 'auto';
+                }
+              }}
               onPause={() => setIsPlaying(false)}
               onTimeUpdate={() => {
                 if (videoRef.current) {
@@ -813,15 +917,26 @@ export default function VideoPlayer({
               }}
               onWaiting={() => {
                 // Only show loading spinner if buffering takes longer than 500ms
-                // to avoid flashing on minor buffer hiccups
+                // to avoid flashing on minor buffer hiccups (YouTube does the same)
                 if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
                 loadingTimeoutRef.current = setTimeout(() => setIsLoading(true), 500);
+                // Schedule stall recovery: if still waiting after 3s, try to nudge
+                if (stallRecoveryRef.current) clearTimeout(stallRecoveryRef.current);
+                stallRecoveryRef.current = setTimeout(() => {
+                  handleStallRecovery();
+                  stallRecoveryRef.current = null;
+                }, 3000);
               }}
               onCanPlay={() => {
                 // Cancel any pending loading spinner
                 if (loadingTimeoutRef.current) {
                   clearTimeout(loadingTimeoutRef.current);
                   loadingTimeoutRef.current = null;
+                }
+                // Cancel stall recovery since we're good
+                if (stallRecoveryRef.current) {
+                  clearTimeout(stallRecoveryRef.current);
+                  stallRecoveryRef.current = null;
                 }
                 setIsLoading(false);
               }}
@@ -1032,7 +1147,16 @@ export default function VideoPlayer({
                 <div className="space-y-1">
                   <div>Resolution: <span className="text-[#E50914]">{videoResolution}</span></div>
                   <div>Time: <span className="text-[#E50914]">{formatTime(currentTime)}</span> / <span className="text-white/60">{formatTime(duration)}</span></div>
-                  <div>Buffer: <span className={`${bufferHealth < 2 ? 'text-yellow-400' : 'text-green-400'}`}>{bufferHealth.toFixed(1)}s</span></div>
+                  <div>Buffer: <span className={`${
+                    bufferStatus === 'healthy' ? 'text-green-400' :
+                    bufferStatus === 'moderate' ? 'text-yellow-400' :
+                    bufferStatus === 'low' ? 'text-orange-400' : 'text-red-400'
+                  }`}>{bufferHealth.toFixed(1)}s</span></div>
+                  <div>Network: <span className={`${
+                    networkQuality === 'high' ? 'text-green-400' :
+                    networkQuality === 'medium' ? 'text-yellow-400' :
+                    networkQuality === 'low' ? 'text-red-400' : 'text-white/40'
+                  }`}>{networkQuality.toUpperCase()}</span></div>
                   <div>Quality: <span className="text-[#E50914]">{quality}</span></div>
                   <div>Speed: <span className="text-[#E50914]">{speed}x</span></div>
                   <div className="truncate">Source: <span className="text-white/50">{src ? (src.length > 40 ? src.slice(0, 40) + '...' : src) : 'N/A'}</span></div>
@@ -1277,7 +1401,7 @@ export default function VideoPlayer({
                   {/* Speed indicator */}
                   {speed !== '1' && (
                     <span className="text-[#E50914] text-xs font-semibold hidden sm:inline">
-                      {speed === '1' ? '' : `${speed}x`}
+                      {speed}x
                     </span>
                   )}
                 </div>

@@ -88,6 +88,8 @@ export async function GET(request: NextRequest) {
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       Accept: '*/*',
+      'Accept-Encoding': 'identity', // Don't let CDN compress video — binary must stream as-is
+      Connection: 'keep-alive',
     };
 
     if (rangeHeader) {
@@ -135,7 +137,7 @@ export async function GET(request: NextRequest) {
 
     // CORS headers
     responseHeaders.set('Access-Control-Allow-Origin', '*');
-    responseHeaders.set('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+    responseHeaders.set('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Cache-Control');
 
     // Download mode: add Content-Disposition to trigger browser download
     if (isDownload) {
@@ -143,8 +145,8 @@ export async function GET(request: NextRequest) {
       responseHeaders.set('Content-Disposition', `attachment; filename="${sanitized}"`);
       responseHeaders.set('Cache-Control', 'no-store');
     } else {
-      // Cache control — allow browser to cache video segments
-      responseHeaders.set('Cache-Control', 'public, max-age=86400');
+      // YouTube-style cache: browser can cache segments, revalidate after 1 hour
+      responseHeaders.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
     }
 
     if (res.status === 206 || rangeHeader) {
