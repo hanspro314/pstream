@@ -71,6 +71,16 @@ export async function fetchSearch(query: string, page = 0): Promise<SearchResult
   return fetchApi<SearchResult[]>(`${API_BASE}/search?q=${encodeURIComponent(query)}&page=${page}${tokenParam}`);
 }
 
+/** Fetch the FULL movie/series library — requires valid token
+ *  Server-side endpoint that queries dashboard + search + list + shows
+ *  Returns ALL unique movies (~900+)
+ */
+export async function fetchLibrary(): Promise<SearchResult[]> {
+  const token = getStoredTokenCode();
+  const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+  return fetchApi<SearchResult[]>(`${API_BASE}/library${tokenParam}`);
+}
+
 /** Fetch episodes for a series — requires valid token
  *  vid: series video ID, scode: series code, no: total episode count
  *  Returns a flat array of episodes (handles range-grouped responses from upstream)
@@ -241,7 +251,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
 
 /** Simple in-memory cache */
 const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 export async function fetchWithCache<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
   const cached = cache.get(key);

@@ -1,15 +1,16 @@
-/* PStream Browse Page — All categories with genre filters, sorting, and search-based discovery
+/* PStream Browse Page — Full movie catalog with genre filters, sorting, and search-based discovery
  *
- * When "All" is selected, automatically searches popular genres in the background
- * and merges results with dashboard movies so users see the FULL library (~230+).
+ * "All" tab fetches the COMPLETE library via /api/stream/library (server-side, ~900+ movies).
+ * Genre tabs use search for category-specific results with pagination.
+ * Uses the same multi-endpoint strategy as the Munowatch Python CLI.
  */
 
 'use client';
 
-import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
-import { fetchSearch } from '@/lib/api';
+import { fetchLibrary, fetchSearch } from '@/lib/api';
 import MovieCard from './MovieCard';
 import { SkeletonGrid } from './SkeletonCard';
 import { ArrowUpDown, Film, ChevronDown, Loader2 } from 'lucide-react';
@@ -17,103 +18,55 @@ import type { Movie, SortOption, SearchResult } from '@/lib/types';
 
 const genres = ['All', 'Action', 'Sci Fi', 'Romance', 'Horror', 'Drama', 'Comedy', 'Thriller', 'Documentary', 'Animation'];
 
-// Terms to search when "All" is selected — covers the full catalog
-const DISCOVERY_TERMS = [
-  'Action', 'Romance', 'Comedy', 'Horror', 'Drama',
-  'Thriller', 'Documentary', 'Animation', 'Adventure',
-  'Crime', 'Fantasy', 'Mystery', 'War', 'Family',
-  'a', 'e', 'i', 'love', 'the',
-];
-
 export default function BrowsePage() {
   const { state, dispatch, navigate } = useAppStore();
 
-  // Search-based genre discovery state
+  // ─── Full library state (server-side, "All" tab) ─────────────
+  const [libraryMovies, setLibraryMovies] = useState<Movie[]>([]);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(false);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+
+  // ─── Genre search state ──────────────────────────────────────
   const [genreSearchResults, setGenreSearchResults] = useState<SearchResult[]>([]);
   const [isGenreSearching, setIsGenreSearching] = useState(false);
   const [hasMoreGenreResults, setHasMoreGenreResults] = useState(false);
   const [genreSearchPage, setGenreSearchPage] = useState(0);
 
-  // Broad search state for "All" view
-  const [broadResults, setBroadResults] = useState<SearchResult[]>([]);
-  const [isBroadSearching, setIsBroadSearching] = useState(false);
-  const [broadSearched, setBroadSearched] = useState(false);
-  const broadSearchRef = useRef(false); // prevent double-fire
-
-  // Dashboard movies
-  const allMovies = useMemo<Movie[]>(() => {
-    if (!state.dashboard?.dashboard) return [];
-    const categories = Array.isArray(state.dashboard.dashboard) ? state.dashboard.dashboard : [];
-    const moviesMap = new Map<number, Movie>();
-    categories.forEach((cat) => {
-      const movies = Array.isArray(cat.movies) ? cat.movies : [];
-      movies.forEach((movie) => {
-        if (!moviesMap.has(movie.id)) {
-          moviesMap.set(movie.id, movie);
-        }
-      });
-    });
-    return Array.from(moviesMap.values());
-  }, [state.dashboard]);
-
-  // ─── Broad search for "All" view ────────────────────
-  // Searches multiple genre terms in background to discover 230+ movies
+  // ─── Fetch full library on mount ─────────────────────────────
   useEffect(() => {
-    if (state.browseGenreFilter !== 'All') return;
-    if (broadSearchRef.current) return;
-    if (allMovies.length === 0) return; // wait for dashboard first
+    if (libraryLoaded) return;
 
-    broadSearchRef.current = true;
-    let cancelled = false;
-
-    const discoverAll = async () => {
-      setIsBroadSearching(true);
-      const allIds = new Set<number>();
-      const allItems: SearchResult[] = [];
-
-      // Add dashboard movie IDs so we can skip them in search results
-      allMovies.forEach((m) => allIds.add(m.id));
-
-      // Search terms sequentially (avoid upstream rate limiting)
-      for (const term of DISCOVERY_TERMS) {
-        if (cancelled) break;
-        try {
-          const results = await fetchSearch(term, 0);
-          const arr = Array.isArray(results) ? results : [];
-          for (const item of arr) {
-            if (!allIds.has(item.id)) {
-              allIds.add(item.id);
-              allItems.push(item);
-            }
-          }
-          // Also fetch page 1 for each genre for deeper coverage
-          if (arr.length >= 10) {
-            try {
-              const page2 = await fetchSearch(term, 1);
-              const arr2 = Array.isArray(page2) ? page2 : [];
-              for (const item of arr2) {
-                if (!allIds.has(item.id)) {
-                  allIds.add(item.id);
-                  allItems.push(item);
-                }
-              }
-            } catch { /* skip page 2 on error */ }
-          }
-        } catch { /* skip failed term */ }
-      }
-
-      if (!cancelled) {
-        setBroadResults(allItems);
-        setBroadSearched(true);
-        setIsBroadSearching(false);
+    const loadLibrary = async () => {
+      setIsLibraryLoading(true);
+      try {
+        const results: SearchResult[] = await fetchLibrary();
+        const movies: Movie[] = results.map((r) => ({
+          id: r.id,
+          subscriber: r.subscriber || '',
+          paid: r.paid || '',
+          title: r.title,
+          image: r.image,
+          vj: r.vj || '',
+          vid: r.vid || String(r.id),
+          ldur: r.ldur || '',
+          state: '',
+          category_id: r.category_id || 0,
+          playingurl: r.playingurl || '',
+        }));
+        setLibraryMovies(movies);
+        setLibraryLoaded(true);
+      } catch {
+        // Fall back to dashboard if library fails
+        setLibraryMovies([]);
+      } finally {
+        setIsLibraryLoading(false);
       }
     };
 
-    discoverAll();
-    return () => { cancelled = true; };
-  }, [state.browseGenreFilter, allMovies.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    loadLibrary();
+  }, [libraryLoaded]);
 
-  // ─── Genre-specific search ─────────────────────────
+  // ─── Genre-specific search ───────────────────────────────────
   useEffect(() => {
     const genre = state.browseGenreFilter;
     if (genre === 'All') {
@@ -170,7 +123,7 @@ export default function BrowsePage() {
     }
   }, [isGenreSearching, hasMoreGenreResults, genreSearchPage, state.browseGenreFilter]);
 
-  // Convert search results to Movie objects
+  // Convert genre search results to Movie objects
   const genreMovies = useMemo<Movie[]>(() => {
     return genreSearchResults.map((r) => ({
       id: r.id,
@@ -187,59 +140,32 @@ export default function BrowsePage() {
     }));
   }, [genreSearchResults]);
 
-  // Convert broad search results to Movie objects
-  const broadMovies = useMemo<Movie[]>(() => {
-    return broadResults.map((r) => ({
-      id: r.id,
-      subscriber: r.subscriber || '',
-      paid: r.paid || '',
-      title: r.title,
-      image: r.image,
-      vj: r.vj || '',
-      vid: r.vid || String(r.id),
-      ldur: r.ldur || '',
-      state: '',
-      category_id: r.category_id || 0,
-      playingurl: r.playingurl || '',
-    }));
-  }, [broadResults]);
-
-  // Combine dashboard + search results, deduplicate by id
-  const combinedMovies = useMemo<Movie[]>(() => {
+  // ─── Determine which movies to display ───────────────────────
+  const displayMovies = useMemo<Movie[]>(() => {
     if (state.browseGenreFilter === 'All') {
-      // For "All": merge dashboard + broad search results
-      if (!broadSearched) return allMovies;
-      const moviesMap = new Map<number, Movie>();
-      // Dashboard movies first (they have richer data)
-      allMovies.forEach((m) => moviesMap.set(m.id, m));
-      // Broad search results fill in the gaps
-      broadMovies.forEach((m) => {
-        if (!moviesMap.has(m.id)) moviesMap.set(m.id, m);
-      });
-      return Array.from(moviesMap.values());
+      // Use the full library
+      return libraryMovies;
     }
 
-    // For specific genre: merge search results with dashboard category matches
+    // For specific genre: merge search results with matching library movies
     const genre = state.browseGenreFilter.toLowerCase();
-    const categoryMatches = allMovies.filter((m) => {
-      const categories = Array.isArray(state.dashboard?.dashboard) ? state.dashboard.dashboard : [];
-      return categories.some(
-        (cat) => cat.category.toLowerCase() === genre && Array.isArray(cat.movies) && cat.movies.some((cm) => cm.id === m.id)
-      );
+    const libraryMatches = libraryMovies.filter((m) => {
+      const titleMatch = m.title.toLowerCase().includes(genre);
+      return titleMatch;
     });
 
     const moviesMap = new Map<number, Movie>();
-    categoryMatches.forEach((m) => moviesMap.set(m.id, m));
-    genreMovies.forEach((m) => {
+    genreMovies.forEach((m) => moviesMap.set(m.id, m));
+    libraryMatches.forEach((m) => {
       if (!moviesMap.has(m.id)) moviesMap.set(m.id, m);
     });
 
     return Array.from(moviesMap.values());
-  }, [allMovies, genreMovies, broadMovies, state.browseGenreFilter, state.dashboard, broadSearched]);
+  }, [libraryMovies, genreMovies, state.browseGenreFilter]);
 
   // Sort
   const filteredMovies = useMemo(() => {
-    let filtered = combinedMovies;
+    let filtered = displayMovies;
 
     switch (state.browseSort) {
       case 'az':
@@ -254,7 +180,7 @@ export default function BrowsePage() {
     }
 
     return filtered;
-  }, [combinedMovies, state.browseSort]);
+  }, [displayMovies, state.browseSort]);
 
   // Handle movie click — go to detail page
   const handleMovieClick = useCallback((movie: Movie) => {
@@ -263,7 +189,12 @@ export default function BrowsePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [dispatch, navigate]);
 
-  if (state.isDashboardLoading && state.browseGenreFilter === 'All') {
+  // ─── Loading state ───────────────────────────────────────────
+  const isInitialLoading = state.browseGenreFilter === 'All'
+    ? isLibraryLoading && libraryMovies.length === 0
+    : isGenreSearching && genreSearchResults.length === 0;
+
+  if (isInitialLoading) {
     return (
       <div className="pt-20 px-4 md:px-12 pb-24 md:pb-8">
         <div className="h-8 w-48 bg-[#1A1A1A] rounded animate-pulse mb-6" />
@@ -323,16 +254,16 @@ export default function BrowsePage() {
       {/* Movie count */}
       <p className="text-white/50 text-sm mb-4">
         {filteredMovies.length} movies found
-        {state.browseGenreFilter === 'All' && isBroadSearching && (
-          <span className="text-[#E50914] ml-1">— discovering more...</span>
+        {state.browseGenreFilter === 'All' && isLibraryLoading && libraryMovies.length > 0 && (
+          <span className="text-[#E50914] ml-1">— loading more...</span>
         )}
         {hasMoreGenreResults && state.browseGenreFilter !== 'All' && (
           <span className="text-[#E50914] ml-1">— more available</span>
         )}
       </p>
 
-      {/* Loading indicator for genre/broad search */}
-      {(isGenreSearching || isBroadSearching) && state.browseGenreFilter !== 'All' && (
+      {/* Loading indicator for genre search */}
+      {isGenreSearching && state.browseGenreFilter !== 'All' && (
         <div className="flex items-center gap-2 mb-4">
           <Loader2 className="w-4 h-4 text-[#E50914] animate-spin" />
           <span className="text-white/40 text-xs">Searching for more...</span>
@@ -363,7 +294,7 @@ export default function BrowsePage() {
             </div>
           )}
         </>
-      ) : isGenreSearching || (isBroadSearching && combinedMovies.length === 0) ? (
+      ) : isInitialLoading ? (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-2 border-[#E50914] border-t-transparent rounded-full animate-spin" />
         </div>
