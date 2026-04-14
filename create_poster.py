@@ -222,7 +222,7 @@ def create():
     d.rectangle([(W-140)//2, hy+100, (W+140)//2, hy+106], fill=(40,40,40))
 
     steps = [
-        ("1", "WhatsApp", "0742337382 to pay via\nMoMo & get your token"),
+        ("1", "WhatsApp", "0703462114 or\n0742337382 to pay via\nMoMo & get your token"),
         ("2", "Visit", "Scan the QR code or go to\npstream-eight-tawny.vercel.app"),
         ("3", "Enter Token", "Type your access code &\nsee plans — start streaming!"),
     ]
@@ -259,8 +259,9 @@ def create():
     d.text((ux,uy), "Visit us at", font=f_body, fill=LIGHT_GRAY)
     d.text((ux,uy+70), "pstream-eight-tawny", font=f_url, fill=RED)
     d.text((ux,uy+140), ".vercel.app", font=f_url, fill=RED)
-    d.text((ux,uy+250), "Or WhatsApp:", font=f_body, fill=LIGHT_GRAY)
-    d.text((ux,uy+320), "0742337382", font=f_body_b, fill=WHITE)
+    d.text((ux,uy+250), "WhatsApp Us:", font=f_body, fill=LIGHT_GRAY)
+    d.text((ux,uy+320), "0703462114", font=f_body_b, fill=WHITE)
+    d.text((ux,uy+378), "0742337382", font=f_body, fill=(150,150,150))
     d.text((ux,uy+420), "Install as an app from your", font=f_tiny, fill=MID_GRAY)
     d.text((ux,uy+468), "browser — no Play Store needed!", font=f_tiny, fill=MID_GRAY)
 
