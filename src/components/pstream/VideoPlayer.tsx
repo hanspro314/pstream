@@ -179,6 +179,10 @@ export default function VideoPlayer({
   const bufferMonitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Stall detection ref
   const stallRecoveryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Throttle timeupdate to ~4 updates/sec to reduce re-renders (YouTube does ~4Hz too)
+  const lastTimeUpdateRef = useRef(0);
+  // Track buffer for stall recovery without re-rendering
+  const lastBufferEndRef = useRef(0);
 
   const { state, dispatch } = useAppStore();
   const selectedMovie = state.selectedMovie;
@@ -775,33 +779,39 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    // Monitor buffer health every 1 second while playing
+    // Monitor buffer health every 2 seconds while playing.
+    // NOTE: onTimeUpdate already updates buffer state at ~4Hz, so this
+    // interval only serves as a stall-detection safety net.
     bufferMonitorRef.current = setInterval(() => {
       if (video.paused || video.ended) return;
       const buf = video.buffered;
       if (buf.length === 0) return;
       const bufferEnd = buf.end(buf.length - 1);
-      const ahead = bufferEnd - video.currentTime;
-      // Update stats
-      setBuffered(bufferEnd);
-      // If buffer ahead is critically low (< 2s), video will likely stall soon
-      // YouTube pre-buffers 30-60s ahead; we aim for at least 10s
-    }, 1000);
+      lastBufferEndRef.current = bufferEnd;
+      // If buffer hasn't grown in 2s and we're close to the edge, video will stall.
+      // The browser's native fetch logic handles pre-buffering; we just monitor.
+    }, 2000);
 
     return () => {
       if (bufferMonitorRef.current) clearInterval(bufferMonitorRef.current);
     };
   }, [src]); // Re-create when source changes
 
-  // ─── Stall recovery: if video is stuck in 'waiting' for too long, try to nudge it
-  // YouTube does this by slightly adjusting playback position to trigger a re-buffer
+  // ─── Stall recovery: if video is stuck in 'waiting' for too long ────
+  // Previous approach: nudge currentTime by 0.1s — this ABORTS the current buffer
+  // fetch and starts a new range request, which hits the DB again, making stalls worse.
+  // New approach: if readyState is still HAVE_NOTHING (0) after 3s, do a soft
+  // pause/play cycle which is gentler and doesn't abort the existing buffer fetch.
   const handleStallRecovery = useCallback(() => {
     const video = videoRef.current;
-    if (!video || video.readyState >= 3) return; // HAVE_FUTURE_DATA or better = no stall
-    // If stuck for more than 3s total, try nudging currentTime by 0.1s
+    if (!video || video.readyState >= 2) return; // HAVE_CURRENT_DATA or better = no stall
     if (video.currentTime > 0) {
-      if (process.env.NODE_ENV !== 'production') console.log('[PStream] Stall recovery: nudging playback position');
-      video.currentTime = video.currentTime + 0.1;
+      if (process.env.NODE_ENV !== 'production') console.log('[PStream] Stall recovery: soft pause/play cycle');
+      // Soft recovery: pause then play without changing currentTime
+      // This doesn't abort the buffer fetch like setting currentTime does
+      video.pause().then(() => {
+        video.play().catch(() => {/* user may have paused */});
+      }).catch(() => {/* ignore */});
     }
   }, []);
 
@@ -871,24 +881,28 @@ export default function VideoPlayer({
                 poster={poster || undefined}
                 className="w-full h-full object-contain"
                 playsInline
-                preload="metadata"
+                preload="auto"
               onPlay={() => {
                 setIsPlaying(true);
-                // YouTube-style: once playback starts, switch from metadata-only preload to aggressive buffering
-                const v = videoRef.current;
-                if (v && v.preload !== 'auto') {
-                  v.preload = 'auto';
-                }
               }}
               onPause={() => setIsPlaying(false)}
               onTimeUpdate={() => {
                 if (videoRef.current) {
+                  const now = performance.now();
+                  // Throttle to ~4 updates/sec (250ms) to reduce React re-renders.
+                  // timeupdate fires 4-15 times/sec depending on browser — most are
+                  // wasteful re-renders since the UI only shows 1-second precision.
+                  if (now - lastTimeUpdateRef.current < 250) return;
+                  lastTimeUpdateRef.current = now;
+
                   const t = videoRef.current.currentTime;
                   const d = videoRef.current.duration;
                   setCurrentTime(t);
                   const buf = videoRef.current.buffered;
                   if (buf.length > 0) {
-                    setBuffered(buf.end(buf.length - 1));
+                    const bufEnd = buf.end(buf.length - 1);
+                    setBuffered(bufEnd);
+                    lastBufferEndRef.current = bufEnd;
                   }
                   // Skip Intro / Recap / Credits detection
                   if (d > 0) {
