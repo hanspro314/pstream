@@ -1,12 +1,15 @@
-/* Dashboard API Proxy — fetches dashboard data
+/* Dashboard API Proxy — fetches dashboard data from the upstream movie API
  *
- * REQUIRES valid token — checks on every request.
+ * REQUIRES valid PStream access token — checks on every request.
+ * Sends API key auth headers to upstream for full content access.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateRequestToken } from '@/lib/validate-token';
 
 const API_BASE = 'https://munoapi.com/api';
+const JWT_TOKEN = process.env.PSTREAM_API_TOKEN || '';
+const USER_ID = process.env.MOVIE_API_USER_ID || '';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,11 +17,24 @@ export async function GET(request: NextRequest) {
     const tokenCheck = await validateRequestToken(request);
     if (!tokenCheck.valid) return tokenCheck.response;
 
-    const res = await fetch(`${API_BASE}/dashboard/v2/82717`, {
+    if (!USER_ID) {
+      return NextResponse.json(
+        { success: false, error: 'Movie API user ID not configured' },
+        { status: 503 }
+      );
+    }
+
+    const headers: Record<string, string> = {
+      'User-Agent': 'Android IOS v3.0',
+    };
+    if (JWT_TOKEN) {
+      headers['X-API-Key'] = JWT_TOKEN;
+      headers['Authorization'] = `Bearer ${JWT_TOKEN}`;
+    }
+
+    const res = await fetch(`${API_BASE}/dashboard/v2/${USER_ID}`, {
       method: 'GET',
-      headers: {
-        'User-Agent': 'Android IOS v3.0',
-      },
+      headers,
       next: { revalidate: 300 }, // Cache for 5 minutes server-side
     });
 

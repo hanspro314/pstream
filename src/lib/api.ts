@@ -1,6 +1,6 @@
 /* PStream API Helper Functions */
 
-import type { DashboardResponse, MovieDetail, SearchResult, User, AdminConfig, TokenInfo, TokenRedeemResult, TokenStatusResult, AdminStats } from './types';
+import type { DashboardResponse, Episode, MovieDetail, SearchResult, User, AdminConfig, TokenInfo, TokenRedeemResult, TokenStatusResult, AdminStats } from './types';
 
 const API_BASE = '/api/stream';
 const AUTH_BASE = '/api/auth';
@@ -67,6 +67,17 @@ export async function fetchSearch(query: string): Promise<SearchResult[]> {
   const token = getStoredTokenCode();
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
   return fetchApi<SearchResult[]>(`${API_BASE}/search?q=${encodeURIComponent(query)}${tokenParam}`);
+}
+
+/** Fetch episodes for a series — requires valid token
+ *  vid: series video ID, scode: series code, no: total episode count
+ */
+export async function fetchEpisodes(vid: string, scode: string, no: number): Promise<Episode[]> {
+  const token = getStoredTokenCode();
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+  return fetchApi<Episode[]>(
+    `${API_BASE}/episodes?vid=${encodeURIComponent(vid)}&scode=${encodeURIComponent(scode)}&no=${no}${tokenParam}`
+  );
 }
 
 // ─── Auth API Functions ──────────────────────────────────────────

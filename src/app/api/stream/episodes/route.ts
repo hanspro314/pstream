@@ -1,7 +1,9 @@
-/* Search API Proxy — searches the upstream movie API catalog
+/* Episodes API Proxy — fetches episode list for a series from the upstream movie API
+ *
+ * Returns all episodes/parts for a given series using the series video ID,
+ * series code, and total episode count.
  *
  * REQUIRES valid PStream access token — checks on every request.
- * Returns merged results from the upstream content provider.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -9,7 +11,6 @@ import { validateRequestToken } from '@/lib/validate-token';
 
 const API_BASE = 'https://munoapi.com/api';
 const JWT_TOKEN = process.env.PSTREAM_API_TOKEN || '';
-const USER_ID = process.env.MOVIE_API_USER_ID || '';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,19 +19,14 @@ export async function GET(request: NextRequest) {
     if (!tokenCheck.valid) return tokenCheck.response;
 
     const { searchParams } = new URL(request.url);
-    const query = searchParams.get('q');
+    const vid = searchParams.get('vid');
+    const scode = searchParams.get('scode');
+    const no = searchParams.get('no');
 
-    if (!query) {
+    if (!vid || !scode || !no) {
       return NextResponse.json(
-        { success: false, error: 'Missing query parameter' },
+        { success: false, error: 'Missing required parameters: vid, scode, no' },
         { status: 400 }
-      );
-    }
-
-    if (!USER_ID) {
-      return NextResponse.json(
-        { success: false, error: 'Movie API user ID not configured' },
-        { status: 503 }
       );
     }
 
@@ -42,10 +38,13 @@ export async function GET(request: NextRequest) {
       headers['Authorization'] = `Bearer ${JWT_TOKEN}`;
     }
 
-    const res = await fetch(`${API_BASE}/search/${encodeURIComponent(query)}/${USER_ID}/0`, {
-      method: 'GET',
-      headers,
-    });
+    const res = await fetch(
+      `${API_BASE}/episodes/range/${encodeURIComponent(vid)}/${encodeURIComponent(scode)}/${encodeURIComponent(no)}`,
+      {
+        method: 'GET',
+        headers,
+      }
+    );
 
     if (!res.ok) {
       return NextResponse.json(
