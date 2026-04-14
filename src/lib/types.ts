@@ -363,6 +363,6 @@ export interface AdminStats {
   streamCount: number;
   downloadCount: number;
   trialCount: number;
-  recentActivations: { code: string; tier: string; deviceInfo: string; activatedAt: string }[];
+  recentActivations: { code: string; tier: string; redeemedDeviceInfo: string | null; redeemedAt: string | null; status: string }[];
   dailyRevenue: { date: string; amount: number }[];
 }

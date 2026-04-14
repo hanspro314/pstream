@@ -11,6 +11,7 @@ import {
   Plus, Shield, Smartphone, ChevronLeft, ChevronRight,
   Lock, ArrowLeft, RotateCcw as ResetDevice,
   Monitor, Globe, ScreenShare, Calendar, Tag,
+  Wifi, Cpu, Layers,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import type { AppView } from '@/lib/types';
@@ -55,27 +56,39 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
-function parseDeviceInfo(infoJson: string | null): { platform: string; browser: string; screen: string; language: string; timezone: string; raw: string } {
-  if (!infoJson) return { platform: '—', browser: '—', screen: '—', language: '—', timezone: '—', raw: '' };
+function parseDeviceInfo(infoJson: string | null): { platform: string; browser: string; browserVersion: string; screen: string; language: string; timezone: string; deviceType: string; osName: string; osVersion: string; connection: string; cores: number; dpr: number; raw: string } {
+  if (!infoJson) return { platform: '—', browser: '—', browserVersion: '', screen: '—', language: '—', timezone: '—', deviceType: '—', osName: '—', osVersion: '', connection: '—', cores: 0, dpr: 1, raw: '' };
   try {
     const info = typeof infoJson === 'string' ? JSON.parse(infoJson) : infoJson;
-    const platform = info.platform || info.os || '—';
-    const browser = info.userAgent
-      ? (info.userAgent.includes('Chrome') && !info.userAgent.includes('Edg') ? 'Chrome' :
-         info.userAgent.includes('Firefox') ? 'Firefox' :
-         info.userAgent.includes('Safari') && !info.userAgent.includes('Chrome') ? 'Safari' :
-         info.userAgent.includes('Edg') ? 'Edge' :
-         info.userAgent.includes('Opera') ? 'Opera' :
-         info.userAgent.split(' ').slice(-1)[0]?.split('/')[0] || 'Unknown')
-      : '—';
+    const platform = info.osName || info.platform || info.os || '—';
+    const browser = info.browserName ||
+      (info.userAgent
+        ? (info.userAgent.includes('Chrome') && !info.userAgent.includes('Edg') ? 'Chrome' :
+           info.userAgent.includes('Firefox') ? 'Firefox' :
+           info.userAgent.includes('Safari') && !info.userAgent.includes('Chrome') ? 'Safari' :
+           info.userAgent.includes('Edg') ? 'Edge' :
+           info.userAgent.includes('Opera') ? 'Opera' :
+           info.userAgent.split(' ').slice(-1)[0]?.split('/')[0] || 'Unknown')
+        : '—');
+    const browserVersion = info.browserVersion || '';
     const screenWidth = info.screenWidth || '?';
     const screenHeight = info.screenHeight || '?';
     const screen = `${screenWidth}x${screenHeight}`;
     const language = info.language || '—';
     const timezone = info.timezone || '—';
-    return { platform, browser, screen, language, timezone, raw: infoJson };
+    const deviceType = info.deviceType || '—';
+    const osName = info.osName || '—';
+    const osVersion = info.osVersion || '';
+    const connection = info.effectiveType && info.effectiveType !== 'unknown'
+      ? info.effectiveType.toUpperCase()
+      : info.connectionType && info.connectionType !== 'unknown'
+        ? info.connectionType
+        : '—';
+    const cores = info.cores || info.hardwareConcurrency || 0;
+    const dpr = info.screenDpr || info.devicePixelRatio || 1;
+    return { platform, browser, browserVersion, screen, language, timezone, deviceType, osName, osVersion, connection, cores, dpr, raw: infoJson };
   } catch {
-    return { platform: infoJson, browser: '—', screen: '—', language: '—', timezone: '—', raw: infoJson };
+    return { platform: infoJson || '—', browser: '—', browserVersion: '', screen: '—', language: '—', timezone: '—', deviceType: '—', osName: '—', osVersion: '', connection: '—', cores: 0, dpr: 1, raw: infoJson || '' };
   }
 }
 
@@ -387,9 +400,15 @@ function AdminDashboardContent() {
                         {item.tier}
                       </Badge>
                     </div>
-                    <p className="text-white/30 text-xs mt-0.5 truncate">{item.deviceInfo || 'Unknown device'}</p>
+                    <p className="text-white/30 text-xs mt-0.5 truncate">
+                      {(() => {
+                        const dev = parseDeviceInfo(item.redeemedDeviceInfo);
+                        const parts = [dev.deviceType !== '—' ? dev.deviceType : null, dev.osName !== '—' ? dev.osName : null, dev.browser !== '—' ? dev.browser : null].filter(Boolean);
+                        return parts.length > 0 ? parts.join(' · ') : 'Unknown device';
+                      })()}
+                    </p>
                   </div>
-                  <span className="text-white/20 text-[10px] flex-shrink-0">{timeAgo(item.activatedAt)}</span>
+                  <span className="text-white/20 text-[10px] flex-shrink-0">{timeAgo(item.redeemedAt)}</span>
                 </div>
               ))}
             </div>
@@ -536,22 +555,31 @@ function AdminDashboardContent() {
                             <Smartphone className="w-3.5 h-3.5 text-white/30" />
                             <p className="text-white/30 text-[10px] uppercase tracking-wider font-semibold">Device Info</p>
                           </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
-                            {/* Platform */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
+                            {/* OS + Version */}
                             <div className="flex items-center gap-2">
-                              <span className="text-sm flex-shrink-0" title={device.platform}>{getPlatformIcon(device.platform)}</span>
+                              <span className="text-sm flex-shrink-0" title={device.osName}>{getPlatformIcon(device.osName)}</span>
                               <div className="min-w-0">
-                                <p className="text-white/25 text-[10px]">Platform</p>
-                                <p className="text-white/70 text-xs font-medium truncate">{device.platform}</p>
+                                <p className="text-white/25 text-[10px]">OS</p>
+                                <p className="text-white/70 text-xs font-medium truncate">{device.osName}{device.osVersion ? ` ${device.osVersion}` : ''}</p>
                               </div>
                             </div>
 
-                            {/* Browser */}
+                            {/* Browser + Version */}
                             <div className="flex items-center gap-2">
                               <Globe className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
                               <div className="min-w-0">
                                 <p className="text-white/25 text-[10px]">Browser</p>
-                                <p className="text-white/70 text-xs font-medium truncate">{device.browser}</p>
+                                <p className="text-white/70 text-xs font-medium truncate">{device.browser}{device.browserVersion ? ` ${device.browserVersion}` : ''}</p>
+                              </div>
+                            </div>
+
+                            {/* Device Type */}
+                            <div className="flex items-center gap-2">
+                              <Smartphone className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Type</p>
+                                <p className="text-white/70 text-xs font-medium">{device.deviceType}</p>
                               </div>
                             </div>
 
@@ -560,7 +588,34 @@ function AdminDashboardContent() {
                               <Monitor className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
                               <div className="min-w-0">
                                 <p className="text-white/25 text-[10px]">Screen</p>
-                                <p className="text-white/70 text-xs font-medium">{device.screen}</p>
+                                <p className="text-white/70 text-xs font-medium">{device.screen} @ {device.dpr}x</p>
+                              </div>
+                            </div>
+
+                            {/* Network */}
+                            <div className="flex items-center gap-2">
+                              <Wifi className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Network</p>
+                                <p className="text-white/70 text-xs font-medium">{device.connection}</p>
+                              </div>
+                            </div>
+
+                            {/* CPU Cores */}
+                            <div className="flex items-center gap-2">
+                              <Cpu className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">CPU</p>
+                                <p className="text-white/70 text-xs font-medium">{device.cores > 0 ? `${device.cores} cores` : '—'}</p>
+                              </div>
+                            </div>
+
+                            {/* Language */}
+                            <div className="flex items-center gap-2">
+                              <Layers className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-white/25 text-[10px]">Language</p>
+                                <p className="text-white/70 text-xs font-medium truncate">{device.language}</p>
                               </div>
                             </div>
 
