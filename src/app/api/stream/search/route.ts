@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
+    const page = parseInt(searchParams.get('page') || '0', 10);
 
     if (!query) {
       return NextResponse.json(
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       headers['Authorization'] = `Bearer ${JWT_TOKEN}`;
     }
 
-    const res = await fetch(`${API_BASE}/search/${encodeURIComponent(query)}/${USER_ID}/0`, {
+    const res = await fetch(`${API_BASE}/search/${encodeURIComponent(query)}/${USER_ID}/${page}`, {
       method: 'GET',
       headers,
     });

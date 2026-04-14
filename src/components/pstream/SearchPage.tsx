@@ -1,46 +1,67 @@
-/* PStream Search Page — Search bar with instant results */
+/* PStream Search Page — Search bar with instant results, pagination, and series support */
 
 'use client';
 
-import React, { useEffect, useCallback, useRef } from 'react';
-import { Search, Clock, X, TrendingUp, Film } from 'lucide-react';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
+import { Search, Clock, X, TrendingUp, Film, ChevronDown, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
 import { fetchSearch } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import MovieCard from './MovieCard';
-import type { Movie } from '@/lib/types';
+import type { Movie, SearchResult } from '@/lib/types';
 
 export default function SearchPage() {
   const { state, dispatch, navigate } = useAppStore();
   const debouncedQuery = useDebounce(state.searchQuery, 500);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const loaderRef = useRef<HTMLDivElement>(null);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreResults, setHasMoreResults] = useState(true);
+  const [allResults, setAllResults] = useState<SearchResult[]>([]);
 
   // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Search on debounce
+  // Reset results when query changes
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.trim().length < 2) {
+      setAllResults([]);
+      setCurrentPage(0);
+      setHasMoreResults(true);
       if (state.searchResults.length > 0) {
         dispatch({ type: 'SET_SEARCH_RESULTS', payload: [] });
       }
       return;
     }
+    // Reset and fetch first page
+    setAllResults([]);
+    setCurrentPage(0);
+    setHasMoreResults(true);
+  }, [debouncedQuery, dispatch]);
 
-    // Abort previous request
+  // Fetch search results (first page or triggered by query change)
+  useEffect(() => {
+    if (!debouncedQuery || debouncedQuery.trim().length < 2) return;
+
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
 
     const doSearch = async () => {
       dispatch({ type: 'SET_SEARCH_LOADING', payload: true });
       try {
-        const results = await fetchSearch(debouncedQuery.trim());
+        const results = await fetchSearch(debouncedQuery.trim(), 0);
         if (!abortRef.current?.signal.aborted) {
           const resultsArray = Array.isArray(results) ? results : [];
+          setAllResults(resultsArray);
+          setCurrentPage(0);
+          setHasMoreResults(resultsArray.length > 0);
           dispatch({ type: 'SET_SEARCH_RESULTS', payload: resultsArray });
           dispatch({ type: 'ADD_RECENT_SEARCH', payload: debouncedQuery.trim() });
         }
@@ -55,9 +76,48 @@ export default function SearchPage() {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, [debouncedQuery, dispatch]);
 
+  // Load more results (next page)
+  const handleLoadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMoreResults || !debouncedQuery.trim()) return;
+
+    const nextPage = currentPage + 1;
+    setIsLoadingMore(true);
+
+    try {
+      const results = await fetchSearch(debouncedQuery.trim(), nextPage);
+      const resultsArray = Array.isArray(results) ? results : [];
+
+      if (resultsArray.length === 0) {
+        // No more results from upstream
+        setHasMoreResults(false);
+      } else {
+        // Merge with existing results, deduplicate by id
+        setAllResults((prev) => {
+          const existingIds = new Set(prev.map((r) => r.id));
+          const newItems = resultsArray.filter((r) => !existingIds.has(r.id));
+          const merged = [...prev, ...newItems];
+          dispatch({ type: 'SET_SEARCH_RESULTS', payload: merged });
+          return merged;
+        });
+        setCurrentPage(nextPage);
+        // If upstream returned fewer results than expected, likely no more pages
+        if (resultsArray.length < 10) {
+          setHasMoreResults(false);
+        }
+      }
+    } catch {
+      // Network error — don't change hasMore, user can retry
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMoreResults, debouncedQuery, currentPage, dispatch]);
+
   const handleClear = useCallback(() => {
     dispatch({ type: 'SET_SEARCH_QUERY', payload: '' });
     dispatch({ type: 'SET_SEARCH_RESULTS', payload: [] });
+    setAllResults([]);
+    setCurrentPage(0);
+    setHasMoreResults(true);
     inputRef.current?.focus();
   }, [dispatch]);
 
@@ -65,25 +125,29 @@ export default function SearchPage() {
     dispatch({ type: 'SET_SEARCH_QUERY', payload: term });
   }, [dispatch]);
 
-  const handleMovieClick = useCallback((result: typeof state.searchResults[0]) => {
+  // Navigate to DETAIL page (not player) so series episodes are visible
+  const handleMovieClick = useCallback((result: SearchResult) => {
     const movie: Movie = {
       id: result.id,
-      subscriber: result.subscriber,
-      paid: result.paid,
+      subscriber: result.subscriber || '',
+      paid: result.paid || '',
       title: result.title,
       image: result.image,
-      vj: result.vj,
-      vid: '',
-      ldur: result.ldur,
+      vj: result.vj || '',
+      vid: result.vid || String(result.id),
+      ldur: result.ldur || '',
       state: '',
-      category_id: result.category_id,
-      playingurl: result.playingurl,
+      category_id: result.category_id || 0,
+      playingurl: result.playingurl || '',
     };
     dispatch({ type: 'SELECT_MOVIE', payload: movie });
-    navigate('player');
+    navigate('detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [dispatch, navigate]);
 
   const trendingTerms = ['Action', 'Romance', 'Comedy', 'Horror', 'Drama'];
+
+  const displayResults = allResults.length > 0 ? allResults : state.searchResults;
 
   return (
     <motion.div
@@ -128,7 +192,7 @@ export default function SearchPage() {
           >
             <div className="w-8 h-8 border-2 border-[#E50914] border-t-transparent rounded-full animate-spin" />
           </motion.div>
-        ) : state.searchResults.length > 0 ? (
+        ) : displayResults.length > 0 ? (
           <motion.div
             key="results"
             initial={{ opacity: 0, y: 10 }}
@@ -136,30 +200,61 @@ export default function SearchPage() {
             exit={{ opacity: 0 }}
           >
             <p className="text-white/50 text-sm mb-4">
-              {state.searchResults.length} results for &ldquo;{state.searchQuery}&rdquo;
+              {displayResults.length} results for &ldquo;{state.searchQuery}&rdquo;
+              {hasMoreResults && <span className="text-[#E50914] ml-1">— scroll down for more</span>}
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-              {state.searchResults.map((result, i) => (
-                <div key={result.id} onClick={() => handleMovieClick(result)}>
+              {displayResults.map((result, i) => (
+                <div key={`${result.id}-${i}`} onClick={() => handleMovieClick(result)}>
                   <MovieCard
                     movie={{
                       id: result.id,
-                      subscriber: result.subscriber,
-                      paid: result.paid,
+                      subscriber: result.subscriber || '',
+                      paid: result.paid || '',
                       title: result.title,
                       image: result.image,
-                      vj: result.vj,
-                      vid: '',
-                      ldur: result.ldur,
+                      vj: result.vj || '',
+                      vid: result.vid || String(result.id),
+                      ldur: result.ldur || '',
                       state: '',
-                      category_id: result.category_id,
-                      playingurl: result.playingurl,
+                      category_id: result.category_id || 0,
+                      playingurl: result.playingurl || '',
                     }}
                     index={i}
                   />
                 </div>
               ))}
             </div>
+
+            {/* Load More Button */}
+            {hasMoreResults && !state.isSearchLoading && (
+              <div ref={loaderRef} className="flex justify-center mt-8">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#1A1A1A] hover:bg-[#252525] border border-white/10 hover:border-[#E50914]/30 text-white/70 hover:text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading more...
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4" />
+                      Load More
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* End of results */}
+            {!hasMoreResults && displayResults.length > 0 && (
+              <p className="text-white/30 text-xs text-center mt-6">
+                Showing all available results
+              </p>
+            )}
           </motion.div>
         ) : state.searchQuery.length >= 2 ? (
           <motion.div

@@ -62,22 +62,32 @@ export async function fetchPreview(vid: string): Promise<MovieDetail> {
   return fetchApi<MovieDetail>(`${API_BASE}/preview?vid=${encodeURIComponent(vid)}${tokenParam}`);
 }
 
-/** Search movies by query — requires valid token */
-export async function fetchSearch(query: string): Promise<SearchResult[]> {
+/** Search movies by query — requires valid token
+ *  page: pagination page number (default 0)
+ */
+export async function fetchSearch(query: string, page = 0): Promise<SearchResult[]> {
   const token = getStoredTokenCode();
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-  return fetchApi<SearchResult[]>(`${API_BASE}/search?q=${encodeURIComponent(query)}${tokenParam}`);
+  return fetchApi<SearchResult[]>(`${API_BASE}/search?q=${encodeURIComponent(query)}&page=${page}${tokenParam}`);
 }
 
 /** Fetch episodes for a series — requires valid token
  *  vid: series video ID, scode: series code, no: total episode count
+ *  Returns a flat array of episodes (handles range-grouped responses from upstream)
  */
 export async function fetchEpisodes(vid: string, scode: string, no: number): Promise<Episode[]> {
   const token = getStoredTokenCode();
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-  return fetchApi<Episode[]>(
+  const data = await fetchApi<Episode[] | { ranges?: Episode[][]; episodes?: Episode[] }>(
     `${API_BASE}/episodes?vid=${encodeURIComponent(vid)}&scode=${encodeURIComponent(scode)}&no=${no}${tokenParam}`
   );
+  // Handle both flat array and grouped response formats
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object') {
+    if (Array.isArray((data as { episodes?: Episode[] }).episodes)) return (data as { episodes: Episode[] }).episodes;
+    if (Array.isArray((data as { ranges?: Episode[][] }).ranges)) return (data as { ranges: Episode[][] }).ranges.flat();
+  }
+  return [];
 }
 
 // ─── Auth API Functions ──────────────────────────────────────────

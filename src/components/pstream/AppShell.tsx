@@ -30,6 +30,7 @@ import DownloadsPage from './DownloadsPage';
 import SettingsPage from './SettingsPage';
 import AdminDashboard from './AdminDashboard';
 import { SkeletonBanner, SkeletonRow } from './SkeletonCard';
+import { List } from 'lucide-react';
 import type { Movie, MovieDetail } from '@/lib/types';
 
 const pageVariants = {
@@ -171,6 +172,16 @@ export default function AppShell() {
   useEffect(() => {
     if (!state.selectedMovie || state.currentView !== 'player') return;
     const vid = String(state.selectedMovie.vid || state.selectedMovie.id);
+
+    // If movieDetail is already loaded with a valid playingUrl for this vid, skip re-fetch
+    // (This prevents re-fetching when navigating from detail→player for episode playback)
+    if (movieDetail?.playingUrl && String(movieDetail?.video_title || '').length > 0) {
+      // Check if the current detail matches the selected movie
+      const detailVid = String(movieDetail.id || '');
+      if (detailVid === vid || state.selectedMovieDetail?.playingUrl === movieDetail.playingUrl) {
+        return;
+      }
+    }
 
     const loadPreview = async () => {
       // Reset inside the async callback (not synchronously in effect body)
@@ -366,6 +377,23 @@ export default function AppShell() {
             <p className="text-white/70 text-sm leading-relaxed mb-4 max-w-3xl">
               {movieDetail.description || 'No description available for this title.'}
             </p>
+
+            {/* Series badge — link to detail page to see all episodes */}
+            {movieDetail.episodes && movieDetail.episodes > 0 && (
+              <button
+                onClick={() => {
+                  setMovieDetail(null);
+                  setPreviewError(null);
+                  navigate('detail');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm font-medium transition-colors mb-4"
+              >
+                <List className="w-4 h-4 text-[#E50914]" />
+                <span>{movieDetail.episodes} Episodes Available</span>
+                <span className="text-white/40 text-xs ml-1">View All</span>
+              </button>
+            )}
 
             {/* Related movies */}
             {playerRelatedMovies.length > 0 && (

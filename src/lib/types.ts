@@ -82,6 +82,7 @@ export interface SearchResult {
   paid: string;
   image: string;
   vj: string;
+  vid: string;
   ldur: string;
   category_id: number;
   playingurl: string;

@@ -1,20 +1,28 @@
-/* PStream Browse Page — All categories with genre filters and sorting */
+/* PStream Browse Page — All categories with genre filters, sorting, and search-based discovery */
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore } from '@/lib/store';
+import { fetchSearch } from '@/lib/api';
 import MovieCard from './MovieCard';
 import { SkeletonGrid } from './SkeletonCard';
-import { ArrowUpDown } from 'lucide-react';
-import type { Movie, SortOption } from '@/lib/types';
+import { ArrowUpDown, Film, ChevronDown, Loader2 } from 'lucide-react';
+import type { Movie, SortOption, SearchResult } from '@/lib/types';
 
 const genres = ['All', 'Action', 'Sci Fi', 'Romance', 'Horror', 'Drama', 'Comedy', 'Thriller', 'Documentary', 'Animation'];
 
 export default function BrowsePage() {
   const { state, dispatch, navigate } = useAppStore();
 
+  // Search-based genre discovery state
+  const [genreSearchResults, setGenreSearchResults] = useState<SearchResult[]>([]);
+  const [isGenreSearching, setIsGenreSearching] = useState(false);
+  const [hasMoreGenreResults, setHasMoreGenreResults] = useState(false);
+  const [genreSearchPage, setGenreSearchPage] = useState(0);
+
+  // Dashboard movies
   const allMovies = useMemo<Movie[]>(() => {
     if (!state.dashboard?.dashboard) return [];
     const categories = Array.isArray(state.dashboard.dashboard) ? state.dashboard.dashboard : [];
@@ -30,23 +38,109 @@ export default function BrowsePage() {
     return Array.from(moviesMap.values());
   }, [state.dashboard]);
 
-  const filteredMovies = useMemo(() => {
-    let filtered = allMovies;
-
-    // Genre filter
-    if (state.browseGenreFilter !== 'All') {
-      const genre = state.browseGenreFilter.toLowerCase();
-      filtered = filtered.filter((m) => {
-        const categories = Array.isArray(state.dashboard?.dashboard) ? state.dashboard.dashboard : [];
-        return categories.some(
-          (cat) => cat.category.toLowerCase() === genre && Array.isArray(cat.movies) && cat.movies.some((cm) => cm.id === m.id)
-        );
-      });
-      // If no match from categories, show all (fallback)
-      if (filtered.length === 0) filtered = allMovies;
+  // When genre filter changes, search for that genre to discover more movies
+  useEffect(() => {
+    const genre = state.browseGenreFilter;
+    if (genre === 'All') {
+      setGenreSearchResults([]);
+      setGenreSearchPage(0);
+      setHasMoreGenreResults(false);
+      return;
     }
 
-    // Sort
+    const searchByGenre = async () => {
+      setIsGenreSearching(true);
+      setGenreSearchResults([]);
+      setGenreSearchPage(0);
+      try {
+        const results = await fetchSearch(genre, 0);
+        const arr = Array.isArray(results) ? results : [];
+        setGenreSearchResults(arr);
+        setHasMoreGenreResults(arr.length >= 10);
+      } catch {
+        setGenreSearchResults([]);
+        setHasMoreGenreResults(false);
+      } finally {
+        setIsGenreSearching(false);
+      }
+    };
+
+    searchByGenre();
+  }, [state.browseGenreFilter]);
+
+  // Load more genre results
+  const handleLoadMoreGenre = useCallback(async () => {
+    if (isGenreSearching || !hasMoreGenreResults || state.browseGenreFilter === 'All') return;
+
+    const nextPage = genreSearchPage + 1;
+    setIsGenreSearching(true);
+    try {
+      const results = await fetchSearch(state.browseGenreFilter, nextPage);
+      const arr = Array.isArray(results) ? results : [];
+      if (arr.length === 0) {
+        setHasMoreGenreResults(false);
+      } else {
+        setGenreSearchResults((prev) => {
+          const existingIds = new Set(prev.map((r) => r.id));
+          const newItems = arr.filter((r) => !existingIds.has(r.id));
+          return [...prev, ...newItems];
+        });
+        setGenreSearchPage(nextPage);
+        if (arr.length < 10) setHasMoreGenreResults(false);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setIsGenreSearching(false);
+    }
+  }, [isGenreSearching, hasMoreGenreResults, genreSearchPage, state.browseGenreFilter]);
+
+  // Convert search results to Movie objects
+  const genreMovies = useMemo<Movie[]>(() => {
+    return genreSearchResults.map((r) => ({
+      id: r.id,
+      subscriber: r.subscriber || '',
+      paid: r.paid || '',
+      title: r.title,
+      image: r.image,
+      vj: r.vj || '',
+      vid: r.vid || String(r.id),
+      ldur: r.ldur || '',
+      state: '',
+      category_id: r.category_id || 0,
+      playingurl: r.playingurl || '',
+    }));
+  }, [genreSearchResults]);
+
+  // Combine dashboard + search results, deduplicate by id
+  const combinedMovies = useMemo<Movie[]>(() => {
+    if (state.browseGenreFilter === 'All') return allMovies;
+
+    // Merge search results with dashboard category matches
+    const genre = state.browseGenreFilter.toLowerCase();
+    const categoryMatches = allMovies.filter((m) => {
+      const categories = Array.isArray(state.dashboard?.dashboard) ? state.dashboard.dashboard : [];
+      return categories.some(
+        (cat) => cat.category.toLowerCase() === genre && Array.isArray(cat.movies) && cat.movies.some((cm) => cm.id === m.id)
+      );
+    });
+
+    // Deduplicate: prefer dashboard movies, add search results not in dashboard
+    const moviesMap = new Map<number, Movie>();
+    // Add dashboard category matches first (they have full Movie data)
+    categoryMatches.forEach((m) => moviesMap.set(m.id, m));
+    // Add search results that aren't already included
+    genreMovies.forEach((m) => {
+      if (!moviesMap.has(m.id)) moviesMap.set(m.id, m);
+    });
+
+    return Array.from(moviesMap.values());
+  }, [allMovies, genreMovies, state.browseGenreFilter, state.dashboard]);
+
+  // Sort
+  const filteredMovies = useMemo(() => {
+    let filtered = combinedMovies;
+
     switch (state.browseSort) {
       case 'az':
         filtered = [...filtered].sort((a, b) => a.title.localeCompare(b.title));
@@ -56,14 +150,20 @@ export default function BrowsePage() {
         break;
       case 'popular':
       default:
-        // Keep original order
         break;
     }
 
     return filtered;
-  }, [allMovies, state.browseGenreFilter, state.browseSort, state.dashboard]);
+  }, [combinedMovies, state.browseSort]);
 
-  if (state.isDashboardLoading) {
+  // Handle movie click — go to detail page
+  const handleMovieClick = useCallback((movie: Movie) => {
+    dispatch({ type: 'SELECT_MOVIE', payload: movie });
+    navigate('detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [dispatch, navigate]);
+
+  if (state.isDashboardLoading && state.browseGenreFilter === 'All') {
     return (
       <div className="pt-20 px-4 md:px-12 pb-24 md:pb-8">
         <div className="h-8 w-48 bg-[#1A1A1A] rounded animate-pulse mb-6" />
@@ -85,7 +185,9 @@ export default function BrowsePage() {
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-white text-xl md:text-2xl font-bold">Browse Movies</h1>
+        <h1 className="text-white text-xl md:text-2xl font-bold">
+          {state.browseGenreFilter === 'All' ? 'Browse Movies' : state.browseGenreFilter}
+        </h1>
         <div className="flex items-center gap-2">
           <ArrowUpDown className="w-4 h-4 text-white/50" />
           <select
@@ -119,14 +221,46 @@ export default function BrowsePage() {
       </div>
 
       {/* Movie count */}
-      <p className="text-white/50 text-sm mb-4">{filteredMovies.length} movies found</p>
+      <p className="text-white/50 text-sm mb-4">
+        {filteredMovies.length} movies found
+        {hasMoreGenreResults && <span className="text-[#E50914] ml-1">— more available</span>}
+      </p>
+
+      {/* Loading indicator for genre search */}
+      {isGenreSearching && (
+        <div className="flex items-center gap-2 mb-4">
+          <Loader2 className="w-4 h-4 text-[#E50914] animate-spin" />
+          <span className="text-white/40 text-xs">Searching for more...</span>
+        </div>
+      )}
 
       {/* Movie grid */}
       {filteredMovies.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-          {filteredMovies.map((movie, i) => (
-            <MovieCard key={movie.id} movie={movie} index={i} />
-          ))}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            {filteredMovies.map((movie, i) => (
+              <div key={movie.id} onClick={() => handleMovieClick(movie)}>
+                <MovieCard movie={movie} index={i} />
+              </div>
+            ))}
+          </div>
+
+          {/* Load More button for genre search */}
+          {hasMoreGenreResults && !isGenreSearching && state.browseGenreFilter !== 'All' && (
+            <div className="flex justify-center mt-8">
+              <button
+                onClick={handleLoadMoreGenre}
+                className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#1A1A1A] hover:bg-[#252525] border border-white/10 hover:border-[#E50914]/30 text-white/70 hover:text-white text-sm font-medium transition-all"
+              >
+                <ChevronDown className="w-4 h-4" />
+                Load More {state.browseGenreFilter} Movies
+              </button>
+            </div>
+          )}
+        </>
+      ) : isGenreSearching ? (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 border-2 border-[#E50914] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -140,6 +274,3 @@ export default function BrowsePage() {
     </motion.div>
   );
 }
-
-// Need to import Film for empty state
-import { Film } from 'lucide-react';

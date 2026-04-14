@@ -7,12 +7,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Play, Plus, Check, Share2, Clock, Film, Globe, HardDrive, Star,
   ArrowLeft, Download, ChevronDown, ChevronUp, X, Send, Shield,
-  Calendar, Monitor, User, Clapperboard
+  Calendar, Monitor, User, Clapperboard, Loader2
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import type { StoredReview } from '@/lib/store';
 import MovieCard from './MovieCard';
-import type { Movie, MovieDetail as MovieDetailType } from '@/lib/types';
+import { fetchEpisodes, fetchPreview } from '@/lib/api';
+import type { Movie, MovieDetail as MovieDetailType, Episode } from '@/lib/types';
 
 // ─── Helper ──────────────────────────────────────────────────────
 function getImageUrl(image: string): string {
@@ -206,25 +207,71 @@ function ReviewModal({
   );
 }
 
-// ─── Episodes Section ────────────────────────────────────────────
-function EpisodesSection({ detail, onPlayEpisode }: { detail: MovieDetailType; onPlayEpisode: (ep: number) => void }) {
-  const [selectedSeason, setSelectedSeason] = useState(1);
+// ─── Episodes Section (REAL episodes from API) ────────────────────
+function EpisodesSection({
+  detail,
+  movie,
+  onPlayEpisode,
+}: {
+  detail: MovieDetailType;
+  movie: Movie;
+  onPlayEpisode: (episode: Episode) => void;
+}) {
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
+  const [episodesError, setEpisodesError] = useState<string | null>(null);
   const episodeCount = detail.episodes || 0;
-  const seasons = Math.max(1, Math.ceil(episodeCount / 10));
 
-  const episodes = useMemo(() => {
-    const start = (selectedSeason - 1) * 10 + 1;
-    const end = Math.min(start + 9, episodeCount);
-    const eps = [];
-    for (let i = start; i <= end; i++) {
-      eps.push({
-        number: i,
-        title: `Episode ${i}`,
-        duration: detail.duration || '',
-      });
-    }
-    return eps;
-  }, [selectedSeason, episodeCount, detail.duration]);
+  // Fetch real episodes from the API when component mounts
+  useEffect(() => {
+    if (episodeCount === 0 || !detail.series_code) return;
+
+    const loadEpisodes = async () => {
+      setIsLoadingEpisodes(true);
+      setEpisodesError(null);
+      try {
+        const vid = detail.series_code || String(movie.id || movie.vid);
+        const eps = await fetchEpisodes(vid, detail.series_code, episodeCount);
+        if (eps.length === 0) {
+          // Fallback: generate placeholder episodes if API returns empty
+          const fallback: Episode[] = [];
+          for (let i = 1; i <= episodeCount; i++) {
+            fallback.push({
+              id: movie.id + i,
+              vid: `${vid}-${i}`,
+              title: `Episode ${i}`,
+              thumbnail: detail.thumbnail || movie.image,
+              duration: detail.duration || '',
+              episode: i,
+            });
+          }
+          setEpisodes(fallback);
+        } else {
+          setEpisodes(eps);
+        }
+      } catch {
+        setEpisodesError('Failed to load episodes. Tap to retry.');
+        // Generate fallback episodes so users can still browse
+        const fallback: Episode[] = [];
+        const vid = detail.series_code || String(movie.id || movie.vid);
+        for (let i = 1; i <= Math.min(episodeCount, 50); i++) {
+          fallback.push({
+            id: movie.id + i,
+            vid: `${vid}-${i}`,
+            title: `Episode ${i}`,
+            thumbnail: detail.thumbnail || movie.image,
+            duration: detail.duration || '',
+            episode: i,
+          });
+        }
+        setEpisodes(fallback);
+      } finally {
+        setIsLoadingEpisodes(false);
+      }
+    };
+
+    loadEpisodes();
+  }, [episodeCount, detail.series_code, detail.thumbnail, detail.duration, movie.id, movie.vid, movie.image]);
 
   if (episodeCount === 0) return null;
 
@@ -235,66 +282,85 @@ function EpisodesSection({ detail, onPlayEpisode }: { detail: MovieDetailType; o
       transition={{ delay: 0.4 }}
       className="mt-8"
     >
-      <h2 className="text-white text-xl md:text-2xl font-bold mb-4">Episodes</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-white text-xl md:text-2xl font-bold">
+          Episodes
+          <span className="text-white/40 text-sm font-normal ml-2">({episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'})</span>
+        </h2>
+      </div>
 
-      {/* Season tabs */}
-      {seasons > 1 && (
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
-          {Array.from({ length: seasons }, (_, i) => (
-            <button
-              key={i}
-              onClick={() => setSelectedSeason(i + 1)}
-              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                selectedSeason === i + 1
-                  ? 'bg-white text-black'
-                  : 'bg-white/10 text-white/60 hover:bg-white/20'
-              }`}
-            >
-              Season {i + 1}
-            </button>
-          ))}
+      {/* Loading state */}
+      {isLoadingEpisodes && (
+        <div className="flex items-center gap-3 py-8 justify-center">
+          <Loader2 className="w-5 h-5 text-[#E50914] animate-spin" />
+          <span className="text-white/50 text-sm">Loading episodes...</span>
+        </div>
+      )}
+
+      {/* Error state */}
+      {episodesError && !isLoadingEpisodes && (
+        <div className="text-center py-4">
+          <p className="text-[#E50914]/70 text-sm mb-2">{episodesError}</p>
         </div>
       )}
 
       {/* Episode list */}
-      <div className="space-y-3 max-h-96 overflow-y-auto rounded-lg" style={{ scrollbarWidth: 'thin' }}>
-        {episodes.map((ep) => (
-          <button
-            key={ep.number}
-            onClick={() => onPlayEpisode(ep.number)}
-            className="w-full flex items-center gap-4 p-3 rounded-lg bg-[#1A1A1A] hover:bg-[#222] transition-colors group text-left"
-          >
-            {/* Thumbnail placeholder */}
-            <div className="w-28 h-16 flex-shrink-0 rounded-md bg-[#252525] overflow-hidden relative">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Play className="w-6 h-6 text-white/40 group-hover:text-[#E50914] transition-colors" />
+      {!isLoadingEpisodes && episodes.length > 0 && (
+        <div className="space-y-3 max-h-[600px] overflow-y-auto rounded-lg" style={{ scrollbarWidth: 'thin' }}>
+          {episodes.map((ep, idx) => (
+            <button
+              key={ep.id || ep.vid || `ep-${idx}`}
+              onClick={() => onPlayEpisode(ep)}
+              className="w-full flex items-center gap-4 p-3 rounded-lg bg-[#1A1A1A] hover:bg-[#222] transition-colors group text-left"
+            >
+              {/* Thumbnail */}
+              <div className="w-28 h-16 flex-shrink-0 rounded-md bg-[#252525] overflow-hidden relative">
+                {(ep.thumbnail || detail.thumbnail) ? (
+                  <img
+                    src={getImageUrl(ep.thumbnail || detail.thumbnail || '')}
+                    alt={ep.title || `Episode ${ep.episode || idx + 1}`}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/10 transition-colors">
+                  <Play className="w-6 h-6 text-white/70 group-hover:text-[#E50914] transition-colors" fill="white" />
+                </div>
+                {/* Episode number badge */}
+                <div className="absolute top-1 left-1 bg-[#E50914] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  {ep.episode || idx + 1}
+                </div>
               </div>
-              {detail.thumbnail && (
-                <img
-                  src={getImageUrl(detail.thumbnail)}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover opacity-40"
-                  loading="lazy"
-                />
-              )}
-            </div>
 
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[#E50914] text-sm font-bold">{ep.number}</span>
-                <span className="text-white text-sm font-medium truncate">{ep.title}</span>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-white text-sm font-medium truncate">
+                    {ep.episode_name || ep.title || `Episode ${ep.episode || idx + 1}`}
+                  </span>
+                </div>
+                {(ep.duration || detail.duration) && (
+                  <p className="text-white/50 text-xs flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {ep.duration || detail.duration}
+                  </p>
+                )}
+                {ep.season && (
+                  <p className="text-white/40 text-xs">Season {ep.season}</p>
+                )}
               </div>
-              {ep.duration && (
-                <p className="text-white/50 text-xs flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {ep.duration}
-                </p>
-              )}
-            </div>
-          </button>
-        ))}
-      </div>
+
+              {/* Play icon */}
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 group-hover:bg-[#E50914] flex items-center justify-center transition-colors">
+                <Play className="w-4 h-4 text-white/70 group-hover:text-white transition-colors" fill="currentColor" />
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -315,6 +381,7 @@ export default function MovieDetailPage({
   const [imgError, setImgError] = useState(false);
   const [copied, setCopied] = useState(false);
   const [downloadBlocked, setDownloadBlocked] = useState(false);
+  const [episodeError, setEpisodeError] = useState<string | null>(null);
 
   const inWatchlist = isInWatchlist(movie.id);
   const cast = detail ? generateMockCast(detail) : null;
@@ -426,11 +493,49 @@ export default function MovieDetailPage({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handlePlayEpisode = (ep: number) => {
-    dispatch({ type: 'SELECT_MOVIE', payload: movie });
-    navigate('player');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const handlePlayEpisode = useCallback(async (ep: Episode) => {
+    // For each episode, we need its specific playingUrl.
+    // Try the episode's playingUrl first, otherwise fetch preview for the episode's vid.
+    if (ep.playingUrl) {
+      // Episode has a direct playing URL — use it
+      const episodeMovie: Movie = {
+        ...movie,
+        vid: ep.vid || movie.vid,
+        playingurl: ep.playingUrl,
+        title: ep.episode_name || ep.title || `Episode ${ep.episode}`,
+      };
+      dispatch({ type: 'SELECT_MOVIE', payload: episodeMovie });
+      dispatch({ type: 'SET_MOVIE_DETAIL', payload: { ...detail, playingUrl: ep.playingUrl, video_title: ep.episode_name || ep.title || `Episode ${ep.episode}` } as MovieDetailType });
+      navigate('player');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // No direct URL — fetch preview for this specific episode
+    const episodeVid = ep.vid || String(ep.id);
+    try {
+      const episodeDetail = await fetchPreview(episodeVid) as MovieDetailType;
+      if (episodeDetail?.playingUrl) {
+        const episodeMovie: Movie = {
+          ...movie,
+          vid: episodeVid,
+          playingurl: episodeDetail.playingUrl,
+          title: episodeDetail.video_title || ep.episode_name || ep.title || `Episode ${ep.episode}`,
+        };
+        dispatch({ type: 'SELECT_MOVIE', payload: episodeMovie });
+        dispatch({ type: 'SET_MOVIE_DETAIL', payload: episodeDetail });
+        navigate('player');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        // Episode preview has no URL — show error toast-like state
+        setEpisodeError(`Episode ${ep.episode || ''} is not available for streaming yet.`);
+        setTimeout(() => setEpisodeError(null), 5000);
+      }
+    } catch {
+      setEpisodeError(`Failed to load episode ${ep.episode || ''}. Please try again.`);
+      setTimeout(() => setEpisodeError(null), 5000);
+    }
+  }, [movie, detail, dispatch, navigate]);
 
   const handleBack = () => {
     goBack();
@@ -690,7 +795,18 @@ export default function MovieDetailPage({
 
         {/* Episodes Section (for series) */}
         {detail && detail.episodes > 0 && (
-          <EpisodesSection detail={detail} onPlayEpisode={handlePlayEpisode} />
+          <>
+            {episodeError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-6 p-3 rounded-lg bg-[#E50914]/10 border border-[#E50914]/20 text-[#E50914] text-sm"
+              >
+                {episodeError}
+              </motion.div>
+            )}
+            <EpisodesSection detail={detail} movie={movie} onPlayEpisode={handlePlayEpisode} />
+          </>
         )}
 
         {/* User Reviews Section */}
