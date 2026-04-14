@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch with proper timeout handling — use AbortController
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30_000); // 30s timeout for CDN
+    const timeoutId = setTimeout(() => controller.abort(), 60_000); // 60s timeout — some CDNs are slow for large ranges on 3G
 
     const res = await fetch(videoUrl, {
       headers,
@@ -263,15 +263,13 @@ export async function GET(request: NextRequest) {
       responseHeaders.set('Content-Disposition', `attachment; filename="${sanitized}"`);
       responseHeaders.set('Cache-Control', 'no-store');
     } else {
-      // Streaming mode: allow browser to cache video data for the current session.
-      // This prevents re-fetching already-buffered segments after seeks.
-      // The token is still validated by our proxy on the initial request.
-      // 'private, max-age=300' lets the browser cache for 5 min (reduces re-fetches on seek)
-      // while 'must-revalidate' ensures stale data is rechecked after expiry.
-      // Combined with the 30s server-side token cache, revoked tokens lose access
-      // within 30s even if browser has cached data (browser will make a new request
-      // when cache expires or on page reload).
-      responseHeaders.set('Cache-Control', 'private, max-age=300, must-revalidate');
+      // Streaming mode: aggresive browser caching to reduce proxy round-trips.
+      // The main cause of streaming hiccups is the double-hop latency:
+      // CDN → Vercel → Browser. By telling the browser to cache video chunks
+      // longer, we eliminate most re-fetches on seek and buffer refill.
+      // 'no-transform' prevents Vercel edge from modifying the response.
+      // Trade-off: revoked tokens lose access within max-age (300s) at most.
+      responseHeaders.set('Cache-Control', 'private, max-age=300, must-revalidate, no-transform');
     }
 
     if (res.status === 206 || rangeHeader) {
