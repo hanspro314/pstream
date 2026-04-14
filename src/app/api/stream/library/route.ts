@@ -14,23 +14,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateRequestToken } from '@/lib/validate-token';
+import { normalizeMovieItem, type NormalizedMovie } from '@/lib/normalize-movie';
 
 const API_BASE = 'https://munoapi.com/api';
 const JWT_TOKEN = process.env.PSTREAM_API_TOKEN || '';
 const USER_ID = process.env.MOVIE_API_USER_ID || '';
 
-interface MovieItem {
-  id: number;
-  title: string;
-  subscriber: string;
-  paid: string;
-  image: string;
-  vj: string;
-  vid: string;
-  ldur: string;
-  category_id: number;
-  playingurl: string;
-}
+// MovieItem is now imported as NormalizedMovie from shared utility
+type MovieItem = NormalizedMovie;
 
 // ─── Known categories from the Python CLI ─────────────────────
 const KNOWN_CATEGORIES = [4, 17, 18, 20, 1, 23, 6, 22, 5, 9, 3, 10, 8];
@@ -84,7 +75,7 @@ function extractMovieItems(data: unknown): MovieItem[] {
       if (Array.isArray(obj[key])) {
         for (const item of obj[key] as unknown[]) {
           if (item && typeof item === 'object' && ((item as Record<string, unknown>).id || (item as Record<string, unknown>).vid)) {
-            items.push(normalizeMovieItem(item));
+            items.push(normalizeMovieItem(item as Record<string, unknown>));
           }
         }
       }
@@ -93,21 +84,7 @@ function extractMovieItems(data: unknown): MovieItem[] {
   return items;
 }
 
-function normalizeMovieItem(raw: Record<string, unknown>): MovieItem {
-  const id = Number(raw.id) || 0;
-  return {
-    id,
-    title: String(raw.title || raw.video_title || 'Unknown'),
-    subscriber: String(raw.subscriber ?? ''),
-    paid: String(raw.paid ?? ''),
-    image: String(raw.image || raw.thumbnail || ''),
-    vj: String(raw.vj || raw.vjname || ''),
-    vid: String(raw.vid || raw.id || ''),
-    ldur: String(raw.ldur || raw.duration || ''),
-    category_id: Number(raw.category_id) || 0,
-    playingurl: String(raw.playingurl || raw.playingUrl || ''),
-  };
-}
+// normalizeMovieItem is now imported from @/lib/normalize-movie
 
 // ─── In-memory cache (server-side, survives between requests) ─
 let cachedLibrary: { movies: MovieItem[]; timestamp: number } | null = null;

@@ -25,6 +25,7 @@ export default function BrowsePage() {
   const [libraryMovies, setLibraryMovies] = useState<Movie[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryRetryCount, setLibraryRetryCount] = useState(0);
 
   // ─── Genre search state ──────────────────────────────────────
   const [genreSearchResults, setGenreSearchResults] = useState<SearchResult[]>([]);
@@ -32,7 +33,7 @@ export default function BrowsePage() {
   const [hasMoreGenreResults, setHasMoreGenreResults] = useState(false);
   const [genreSearchPage, setGenreSearchPage] = useState(0);
 
-  // ─── Fetch full library on mount ─────────────────────────────
+  // ─── Fetch full library on mount (with retry) ───────────────
   useEffect(() => {
     if (libraryLoaded) return;
 
@@ -53,18 +54,31 @@ export default function BrowsePage() {
           category_id: r.category_id || 0,
           playingurl: r.playingurl || '',
         }));
-        setLibraryMovies(movies);
-        setLibraryLoaded(true);
+        if (movies.length > 0) {
+          setLibraryMovies(movies);
+          setLibraryLoaded(true);
+        } else if (libraryRetryCount < 2) {
+          // Retry if we got empty results (server may be building cache)
+          setLibraryRetryCount((c) => c + 1);
+          setTimeout(() => loadLibrary(), 3000);
+        } else {
+          setLibraryLoaded(true); // Give up after 2 retries
+        }
       } catch {
-        // Fall back to dashboard if library fails
-        setLibraryMovies([]);
+        // Retry on network errors
+        if (libraryRetryCount < 2) {
+          setLibraryRetryCount((c) => c + 1);
+          setTimeout(() => loadLibrary(), 3000);
+        } else {
+          setLibraryLoaded(true); // Give up after 2 retries
+        }
       } finally {
         setIsLibraryLoading(false);
       }
     };
 
     loadLibrary();
-  }, [libraryLoaded]);
+  }, [libraryLoaded, libraryRetryCount]);
 
   // ─── Genre-specific search ───────────────────────────────────
   useEffect(() => {
@@ -148,10 +162,23 @@ export default function BrowsePage() {
     }
 
     // For specific genre: merge search results with matching library movies
+    // Search the upstream by genre name AND filter library by title/category keywords
     const genre = state.browseGenreFilter.toLowerCase();
+    const genreKeywords: Record<string, string[]> = {
+      'action': ['action', 'fight', 'war', 'battle', 'strike', 'mission', 'force'],
+      'sci fi': ['sci', 'space', 'alien', 'future', 'robot', 'star', 'mars', 'planet', 'galaxy'],
+      'romance': ['romance', 'love', 'heart', 'wedding', 'kiss', 'valentine', 'couple'],
+      'horror': ['horror', 'haunt', 'ghost', 'demon', 'evil', 'dead', 'fear', 'scream', 'curse'],
+      'drama': ['drama', 'life', 'story', 'family', 'court', 'judge', 'trial'],
+      'comedy': ['comedy', 'funny', 'laugh', 'fun', 'joke', 'prank'],
+      'thriller': ['thriller', 'mystery', 'detective', 'crime', 'murder', 'suspect', 'kill'],
+      'documentary': ['documentary', 'true', 'story'],
+      'animation': ['animation', 'cartoon', 'animated', 'anime'],
+    };
+    const keywords = genreKeywords[genre] || [genre];
     const libraryMatches = libraryMovies.filter((m) => {
-      const titleMatch = m.title.toLowerCase().includes(genre);
-      return titleMatch;
+      const titleLower = m.title.toLowerCase();
+      return keywords.some((kw) => titleLower.includes(kw));
     });
 
     const moviesMap = new Map<number, Movie>();

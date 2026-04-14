@@ -176,9 +176,10 @@ export default function AppShell() {
     // If movieDetail is already loaded with a valid playingUrl for this vid, skip re-fetch
     // (This prevents re-fetching when navigating from detail→player for episode playback)
     if (movieDetail?.playingUrl && String(movieDetail?.video_title || '').length > 0) {
-      // Check if the current detail matches the selected movie
+      // Check if the current detail matches the selected movie — compare both vid and id
       const detailVid = String(movieDetail.id || '');
-      if (detailVid === vid || state.selectedMovieDetail?.playingUrl === movieDetail.playingUrl) {
+      const selectedVid = String(state.selectedMovie?.vid || state.selectedMovie?.id || '');
+      if (detailVid === selectedVid) {
         return;
       }
     }

@@ -1,11 +1,13 @@
 /* Search API Proxy — searches the upstream movie API catalog
  *
  * REQUIRES valid PStream access token — checks on every request.
- * Returns merged results from the upstream content provider.
+ * Returns normalized results with consistent field names (vid, playingurl, etc.)
+ * to ensure frontend compatibility across all data sources.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateRequestToken } from '@/lib/validate-token';
+import { normalizeMovieArray } from '@/lib/normalize-movie';
 
 const API_BASE = 'https://munoapi.com/api';
 const JWT_TOKEN = process.env.PSTREAM_API_TOKEN || '';
@@ -56,6 +58,29 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await res.json();
+
+    // Normalize the response to ensure consistent field names
+    // Upstream search returns array directly — normalize each item
+    if (Array.isArray(data)) {
+      return NextResponse.json({
+        success: true,
+        data: normalizeMovieArray(data),
+      });
+    }
+
+    // Handle nested response formats (some endpoints wrap in { data: [...] })
+    if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>;
+      for (const key of ['data', 'results', 'items', 'movies', 'list', 'search']) {
+        if (Array.isArray(obj[key])) {
+          return NextResponse.json({
+            success: true,
+            data: normalizeMovieArray(obj[key] as unknown[]),
+          });
+        }
+      }
+    }
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

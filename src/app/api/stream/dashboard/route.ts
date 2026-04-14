@@ -1,11 +1,13 @@
 /* Dashboard API Proxy — fetches dashboard data from the upstream movie API
  *
  * REQUIRES valid PStream access token — checks on every request.
- * Sends API key auth headers to upstream for full content access.
+ * Normalizes all movie objects to ensure consistent field names (vid, playingurl, etc.)
+ * across dashboard, search, and library data sources.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { validateRequestToken } from '@/lib/validate-token';
+import { normalizeMovieItem } from '@/lib/normalize-movie';
 
 const API_BASE = 'https://munoapi.com/api';
 const JWT_TOKEN = process.env.PSTREAM_API_TOKEN || '';
@@ -46,6 +48,23 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await res.json();
+
+    // Normalize dashboard categories — ensure each movie has consistent fields
+    if (data && typeof data === 'object' && Array.isArray(data.dashboard)) {
+      data.dashboard = data.dashboard.map((cat: Record<string, unknown>) => {
+        const movies = Array.isArray(cat.movies) ? cat.movies : [];
+        return {
+          ...cat,
+          movies: movies.map((m: Record<string, unknown>) => normalizeMovieItem(m)),
+        };
+      });
+    }
+
+    // Also normalize banner movie if present
+    if (data && typeof data === 'object' && data.banner) {
+      data.banner = normalizeMovieItem(data.banner as Record<string, unknown>);
+    }
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
