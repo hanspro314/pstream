@@ -11,7 +11,7 @@ import {
   Plus, Shield, Smartphone, ChevronLeft, ChevronRight,
   Lock, ArrowLeft, RotateCcw as ResetDevice,
   Monitor, Globe, ScreenShare, Calendar, Tag,
-  Wifi, Cpu, Layers,
+  Wifi, Cpu, Layers, Film,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import type { AppView } from '@/lib/types';
@@ -25,13 +25,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import CatalogExplorer from './CatalogExplorer';
 
-type AdminTab = 'overview' | 'tokens' | 'generate' | 'settings' | 'revenue';
+type AdminTab = 'overview' | 'tokens' | 'generate' | 'catalog' | 'settings' | 'revenue';
 
 const ADMIN_TABS: { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'tokens', label: 'Tokens', icon: Ticket },
   { id: 'generate', label: 'Generate', icon: Plus },
+  { id: 'catalog', label: 'Catalog', icon: Film },
   { id: 'settings', label: 'Settings', icon: Settings },
   { id: 'revenue', label: 'Revenue', icon: DollarSign },
 ];
@@ -909,6 +911,7 @@ function AdminDashboardContent() {
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'tokens' && renderTokens()}
         {activeTab === 'generate' && <GeneratorWrapper />}
+        {activeTab === 'catalog' && <CatalogExplorer />}
         {activeTab === 'settings' && <SettingsWrapper initialConfig={config} />}
         {activeTab === 'revenue' && renderRevenue()}
       </div>
