@@ -265,12 +265,15 @@ def create():
     d.text((ux,uy+468), "browser — no Play Store needed!", font=f_tiny, fill=MID_GRAY)
 
     # ═══ FOOTER ═══
-    d.rectangle([200,H-280,W-200,H-276], fill=(40,40,40))
+    d.rectangle([200,H-310,W-200,H-306], fill=(40,40,40))
     dt="Developed by"; db=f_small.getbbox(dt); dw=db[2]-db[0]
-    d.text(((W-dw)//2, H-250), dt, font=f_small, fill=LIGHT_GRAY)
+    d.text(((W-dw)//2, H-280), dt, font=f_small, fill=LIGHT_GRAY)
     hz="Hamcodz"; hzb=f_dev.getbbox(hz); hzw=hzb[2]-hzb[0]
-    d.text(((W-hzw)//2+2, H-192), hz, font=f_dev, fill=(80,2,2))
-    d.text(((W-hzw)//2, H-194), hz, font=f_dev, fill=RED)
+    d.text(((W-hzw)//2+2, H-222), hz, font=f_dev, fill=(80,2,2))
+    d.text(((W-hzw)//2, H-224), hz, font=f_dev, fill=RED)
+    # Portfolio link
+    plink="hamcodz.duckdns.org"; plb=f_small_b.getbbox(plink); plw=plb[2]-plb[0]
+    d.text(((W-plw)//2, H-162), plink, font=f_small_b, fill=(200, 80, 80))
     tag="PStream v2.5  |  Made in Uganda  |  For Students, By a Student"
     tb=f_foot.getbbox(tag); tw=tb[2]-tb[0]
     d.text(((W-tw)//2, H-110), tag, font=f_foot, fill=MID_GRAY)
