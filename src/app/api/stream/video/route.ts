@@ -19,7 +19,7 @@ export const runtime = 'nodejs';
 // A video makes DOZENS of range requests per minute. Hitting Turso DB
 // on every single one adds 50-200ms latency per chunk — the #1 cause
 // of streaming hiccups. This in-memory cache caches validated tokens
-// for 30 seconds. Security trade-off: max 30s delay for revocation to
+// for 5 minutes. Security trade-off: max 5 min delay for revocation to
 // take effect, which is acceptable for streaming. The cache lives in
 // the warm Vercel function instance and is per-invocation-scope.
 //
@@ -34,7 +34,7 @@ interface TokenCacheEntry {
 }
 
 const tokenCache = new Map<string, TokenCacheEntry>();
-const TOKEN_CACHE_TTL_MS = 30_000; // 30 seconds
+const TOKEN_CACHE_TTL_MS = 300_000; // 5 minutes — reduces DB hits that cause buffer stalls
 let lastCacheCleanup = Date.now();
 
 function getCachedToken(code: string): TokenCacheEntry | null {
@@ -111,7 +111,7 @@ async function validateToken(tokenCode: string): Promise<{ valid: true; tier: st
     return result;
   }
 
-  // Valid token — cache for 30s
+  // Valid token — cache for 5 min
   setCachedToken(normalizedCode, {
     valid: true,
     tier: String(accessCode.tier || 'stream'),
@@ -263,13 +263,13 @@ export async function GET(request: NextRequest) {
       responseHeaders.set('Content-Disposition', `attachment; filename="${sanitized}"`);
       responseHeaders.set('Cache-Control', 'no-store');
     } else {
-      // Streaming mode: aggresive browser caching to reduce proxy round-trips.
+      // Streaming mode: aggressive browser caching to reduce proxy round-trips.
       // The main cause of streaming hiccups is the double-hop latency:
       // CDN → Vercel → Browser. By telling the browser to cache video chunks
       // longer, we eliminate most re-fetches on seek and buffer refill.
       // 'no-transform' prevents Vercel edge from modifying the response.
-      // Trade-off: revoked tokens lose access within max-age (300s) at most.
-      responseHeaders.set('Cache-Control', 'private, max-age=300, must-revalidate, no-transform');
+      // Trade-off: revoked tokens lose access within max-age (3600s) at most.
+      responseHeaders.set('Cache-Control', 'private, max-age=3600, must-revalidate, no-transform');
     }
 
     if (res.status === 206 || rangeHeader) {

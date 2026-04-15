@@ -60,6 +60,8 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="PStream" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+        {/* DNS prefetch for image CDN — speeds up poster/thumbnail loading */}
+        <link rel="dns-prefetch" href="https://munoapp.org" />
         <ServiceWorkerRegister />
       </head>
       <body
